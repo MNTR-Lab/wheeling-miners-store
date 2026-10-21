@@ -1,18 +1,13 @@
-WHEELING MINERS OFFICIAL TEAM STORE — INITIAL BUILD
+WHEELING MINERS OFFICIAL STORE — DESIGN V1
 
-1. Upload index.html into the existing hosting account's intended storefront folder.
-2. Preview the responsive design and real product sample images. This is PREVIEW MODE, not a live selling site.
-3. In Shopify GOAT Sports, create/verify a Wheeling Miners collection and publish approved products to the relevant Storefront sales channel.
-4. Configure the CONFIG object near the bottom of index.html:
-   shopDomain = GOAT Sports myshopify.com domain
-   storefrontAccessToken = Shopify Storefront API public access token (NOT Admin API token)
-   collectionHandle = actual published Miners collection handle
-5. Test live product variants, cart, checkout, checkout merchant identity, notifications, tax, shipping, and 20% commission tracking.
-6. Point shop.wheelingminers.com to the actual hosting service after confirming DNS instructions from that host.
+Upload index.html and the entire assets/ folder to the ROOT of MNTR-Lab/wheeling-miners-store.
+Keep assets/miners-primary.png in its exact relative path.
+Cloudflare Pages will automatically deploy the main branch.
 
-NOTES:
-- Does not create a new Shopify store.
-- Does not publish draft products or change GOAT Sports data.
-- Uses preview merchandise names/images/prices from GOAT Sports Shopify read results; live pricing comes from Storefront API after configuration.
-- GOAT Sports may still appear as merchant of record in checkout and required disclosures.
-- The WM text mark is a placeholder; replace with the official licensed Miners logo asset.
+This is a VISUAL PREVIEW, not a live Shopify sales channel.
+Featured merchandise images are from the existing GOAT Sports Shopify catalog.
+The product list is currently hard-coded and products were previously observed in draft status.
+The preview cart is not a real checkout, and no orders are placed.
+
+NEXT: approve the visual design, then integrate published products and variants using Shopify Storefront API with a public Storefront token and Shopify hosted checkout.
+Never put a Shopify Admin API token in frontend source code.
