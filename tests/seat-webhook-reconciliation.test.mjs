@@ -7,7 +7,7 @@ const variant='gid://shopify/ProductVariant/456';
 const order={id:123,line_items:[{sku,quantity:1,variant_id:456}],note_attributes:[{name:'wm_reservation_id',value:rid},{name:'wm_checkout_nonce',value:'nonce_1234567890123456789012'}]};
 const reservation={id:rid,status:'HELD',checkout_nonce:'nonce_1234567890123456789012',expires_at:'2099-01-01T00:00:00.000Z',shopify_order_id:null};
 const row={sku,status:'HELD',shopify_variant_id:variant,hold_id:rid,hold_expires_at:'2099-01-01T00:00:00.000Z',shopify_order_id:null};
-function db({res=reservation,linked=[{seat_sku:sku,shopify_variant_id:variant}],rows=[row]}={}){return {prepare(sql){return {bind(){return {first:async()=>res,all:async()=>({results:sql.includes('reservation_seats')?linked:rows})}}}}}};
+function db({res=reservation,linked=[{seat_sku:sku,shopify_variant_id:variant}],rows=[row]}={}){return {prepare(sql){if(!/^SELECT\s/i.test(sql))throw Error('UNEXPECTED_DATABASE_WRITE');return {bind(){return {first:async()=>res,all:async()=>({results:sql.includes('reservation_seats')?linked:rows})}}}}}};
 test('valid ownership yields read-only plan count',async()=>{const r=await inspectPaidOrderOwnership(order,db());assert.equal(r.reason,'OWNERSHIP_VERIFIED');assert.equal(r.proposed_seat_updates,1);assert.equal(r.ready_for_fulfillment,false)});
 test('non-seat orders ignored',async()=>assert.equal((await inspectPaidOrderOwnership({...order,line_items:[{sku:'SHIRT'}]},db())).ignored,true));
 test('missing attributes rejected',async()=>assert.equal((await inspectPaidOrderOwnership({...order,note_attributes:[]},db())).reason,'INVALID_RESERVATION_LINK'));
@@ -15,6 +15,6 @@ test('duplicate reservation attributes rejected',async()=>assert.equal((await in
 test('missing reservation rejected',async()=>assert.equal((await inspectPaidOrderOwnership(order,db({res:null}))).reason,'RESERVATION_NOT_FOUND'));
 test('wrong nonce rejected',async()=>assert.equal((await inspectPaidOrderOwnership(order,db({res:{...reservation,checkout_nonce:'nonce_wrongwrongwrongwrongwrong'}}))).detail,'CHECKOUT_NONCE_MISMATCH'));
 test('wrong hold owner rejected',async()=>assert.equal((await inspectPaidOrderOwnership(order,db({rows:[{...row,hold_id:'reservation_other12345'}]}))).detail,'HOLD_OWNERSHIP_MISMATCH'));
-test('unmapped variant rejected',async()=>assert.equal((await inspectPaidOrderOwnership(order,db({rows:[{...row,shopify_variant_id:'gid://shopify/ProductVariant/999'}]}))).detail,'RESERVATION_SEAT_MISMATCH'));
+test('unmapped variant rejected without allowing fulfillment',async()=>{const result=await inspectPaidOrderOwnership(order,db({rows:[{...row,shopify_variant_id:'gid://shopify/ProductVariant/999'}]}));assert.equal(result.reason,'RECONCILIATION_REJECTED');assert.equal(result.detail,'SEAT_RECONCILIATION_FAILED');assert.equal(result.ready_for_fulfillment,false);assert.notEqual(result.ownership_verified,true)});
 test('expired reservation rejected',async()=>assert.equal((await inspectPaidOrderOwnership(order,db({res:{...reservation,expires_at:'2020-01-01T00:00:00Z'}}))).detail,'EXPIRED_RESERVATION'));
 test('no database rejected',async()=>assert.equal((await inspectPaidOrderOwnership(order,null)).reason,'DATABASE_UNAVAILABLE'));
