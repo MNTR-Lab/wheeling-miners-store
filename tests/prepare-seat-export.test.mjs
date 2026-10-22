@@ -1,0 +1,15 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {prepareExport} from '../tools/prepare-seat-export.mjs';
+const s={sku:'WM-ST-105-A-01',section:'105',row_label:'A',seat_number:1,price_cents:16000,status:'UNRELEASED',shopify_variant_id:null};
+const run=(payload,opts={requireComplete:false})=>prepareExport(payload,opts);
+test('D1 result object supported',()=>assert.equal(run({results:[s]}).summary.seats,1));
+test('D1 API response supported',()=>assert.equal(run({result:[{results:[s]}]}).summary.sections,1));
+test('D1 single array wrapper supported',()=>assert.equal(run([{results:[s]}]).summary.mapped,0));
+test('CSV quotes every value and includes exact V42 columns',()=>{const x=run([s]).csv;assert.match(x,/sku,section,row_label,seat_number,price_cents,status,shopify_variant_id/);assert.match(x,/"WM-ST-105-A-01","105","A","1","16000","UNRELEASED",""/)});
+test('rejects duplicate seats',()=>assert.throws(()=>run([s,s]),/Duplicate/));
+test('rejects incorrect identity',()=>assert.throws(()=>run([{...s,section:'106'}]),/identity mismatch/));
+test('rejects released seats',()=>assert.throws(()=>run([{...s,status:'AVAILABLE'}]),/not fully staged/));
+test('rejects missing required columns',()=>assert.throws(()=>run([{...s,price_cents:undefined}]),/Missing price_cents/));
+test('rejects partial exports by default',()=>assert.throws(()=>prepareExport([s]),/Incomplete D1 export/));
+test('never creates approval or enables sales',()=>{const x=run([s]);assert.equal(x.summary.staging_only,true);assert.equal(x.summary.shopify_changes,0);assert.doesNotMatch(x.csv,/approved/i)});
