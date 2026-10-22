@@ -1,0 +1,14 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
+const source=readFileSync(new URL('../src/seat-api.js',import.meta.url),'utf8');
+const api=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const db={prepare(sql){return {bind(...args){return this},async first(){return {total:3737,sections:63,unreleased:3737,available:0,held:0,sold:0,mapped:0,available_without_variant:0,n:0,count:0}},async all(){return {results:[]}}}}};
+const env={SEAT_DB:db};
+const call=(path,method='GET',body)=>api.handleSeatApi(new Request('https://example.com'+path,{method,headers:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)}),env);
+test('readiness stays staging',async()=>{const r=await call('/api/seats/readiness');assert.equal((await r.json()).ready_for_sales,false)});
+test('holds blocked',async()=>assert.equal((await call('/api/seats/hold','POST',{})).status,423));
+test('checkout blocked',async()=>assert.equal((await call('/api/seats/checkout','POST',{})).status,423));
+test('webhook requires secret',async()=>assert.equal((await call('/api/seats/webhooks/shopify','POST',{})).status,503));
+test('duplicate selection rejected',async()=>assert.equal((await call('/api/seats/selection-check','POST',{skus:['WM-ST-105-A-01','WM-ST-105-A-01']})).status,400));
+test('too many seats rejected',async()=>assert.equal((await call('/api/seats/selection-check','POST',{skus:Array.from({length:9},(_,i)=>'WM-ST-105-A-'+String(i+1).padStart(2,'0'))})).status,400));
+test('invalid SKU rejected',async()=>assert.equal((await call('/api/seats/selection-check','POST',{skus:['BAD']})).status,400));
+test('valid selection cannot checkout',async()=>assert.equal((await(await call('/api/seats/selection-check','POST',{skus:['WM-ST-105-A-01']})).json()).can_checkout,false));
