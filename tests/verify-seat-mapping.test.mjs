@@ -1,0 +1,11 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {audit} from '../tools/verify-seat-mapping.mjs';
+const seat={sku:'WM-ST-105-A-01',section:'105',row_label:'A',seat_number:'1',price_cents:'16000',status:'UNRELEASED'};
+const variant={sku:seat.sku,variant_id:'gid://shopify/ProductVariant/123',product_sku:'WM-ST-SEC-105',price_cents:'16000',inventory_quantity:'0',product_status:'DRAFT'};
+const manifest={sku:seat.sku,section:'105',row_label:'A',seat_number:'1',price_cents:'16000',approved:'YES'};
+test('no independent approval fails',()=>assert.match(audit([seat],[variant],[{...manifest,approved:'NO'}]).issues.join('|'),/Not independently approved/));
+test('variant mismatch fails',()=>assert.match(audit([seat],[{...variant,price_cents:'6500'}],[manifest]).issues.join('|'),/Price mismatch/));
+test('wrong product fails',()=>assert.match(audit([seat],[{...variant,product_sku:'WM-ST-SEC-106'}],[manifest]).issues.join('|'),/Wrong Shopify product/));
+test('nonzero inventory fails',()=>assert.match(audit([seat],[{...variant,inventory_quantity:'1'}],[manifest]).issues.join('|'),/Nonzero Shopify inventory/));
+test('seat release fails',()=>assert.match(audit([{...seat,status:'AVAILABLE'}],[variant],[manifest]).issues.join('|'),/released before approval/));
+test('duplicate variants fail',()=>{const s2={...seat,sku:'WM-ST-105-A-02',seat_number:'2'};const m2={...manifest,sku:s2.sku,seat_number:'2'};const v2={...variant,sku:s2.sku};assert.match(audit([seat,s2],[variant,v2],[manifest,m2]).issues.join('|'),/duplicate variant ID/)});
+test('even complete mapping is not an automatic sales release',()=>assert.equal(audit([seat],[variant],[manifest]).approved_for_release,false));
