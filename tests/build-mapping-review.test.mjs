@@ -1,0 +1,15 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {buildMappingReview} from '../tools/build-mapping-review.mjs';
+const s={sku:'WM-ST-105-A-01',section:'105',row_label:'A',seat_number:'1',price_cents:'16000',status:'UNRELEASED',shopify_variant_id:''};
+const v={sku:s.sku,variant_id:'gid://shopify/ProductVariant/123',product_sku:'WM-ST-SEC-105',price_cents:'16000',inventory_quantity:'0',product_status:'DRAFT'};
+const a={sku:s.sku,section:'105',row_label:'A',seat_number:'1',price_cents:'16000',approved:'YES'};
+const run=(ss=[s],vv=[v],aa=[a])=>buildMappingReview(ss,vv,aa,{requireComplete:false});
+test('valid data yields guarded review-only transaction',()=>{const x=run();assert.equal(x.ready,true);assert.match(x.sql,/BEGIN IMMEDIATE;/);assert.match(x.sql,/COMMIT;/);assert.match(x.sql,/CREATE TEMP TABLE _wm_guard/);assert.equal(x.executed,false);assert.equal(x.sales_enabled,false)});
+test('empty string and null variant IDs accepted as unmapped',()=>{assert.equal(run().ready,true);assert.equal(run([{...s,shopify_variant_id:null}]).ready,true)});
+test('unapproved manifest blocks output',()=>assert.equal(run([s],[v],[{...a,approved:'NO'}]).sql,null));
+test('released seats block output',()=>assert.equal(run([{...s,status:'AVAILABLE'}]).sql,null));
+test('nonzero Shopify inventory blocks output',()=>assert.equal(run([s],[{...v,inventory_quantity:'2'}]).sql,null));
+test('duplicate Shopify variants block output',()=>{const s2={...s,sku:'WM-ST-105-A-02',seat_number:'2'};const v2={...v,sku:s2.sku};const a2={...a,sku:s2.sku,seat_number:'2'};assert.equal(run([s,s2],[v,v2],[a,a2]).sql,null)});
+test('wrong section product blocks output',()=>assert.equal(run([s],[{...v,product_sku:'WM-ST-SEC-106'}]).sql,null));
+test('mapped seat blocks output',()=>assert.equal(run([{...s,shopify_variant_id:v.variant_id}]).sql,null));
+test('incomplete full inventory blocks by default',()=>assert.equal(buildMappingReview([s],[v],[a]).sql,null));
