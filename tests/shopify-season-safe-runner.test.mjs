@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {inspect,assertDraft,stageOptions,stageBatch,validateBatch} from '../tools/shopify-season-safe-runner.mjs';
+const id='gid://shopify/Product/123',section='105';
+const product=()=>({id,title:'Wheeling Miners | Season Tickets | Section 105',status:'DRAFT',options:[{id:'gid://shopify/ProductOption/123',name:'Row',values:['Section 105']},{id:'gid://shopify/ProductOption/456',name:'Seat',values:['PENDING']}],variants:[{id:'gid://shopify/ProductVariant/1',sku:'WM-ST-SEC-105',inventoryQuantity:0,inventoryPolicy:'DENY',price:'160.00'}]});
+const batch={section:'105',request:{variables:{productId:id,variants:[{price:'160.00',inventoryPolicy:'DENY',inventoryItem:{sku:'WM-ST-105-B-06',tracked:true},optionValues:[{optionName:'Row',name:'B'},{optionName:'Seat',name:'6'}]}]}}};
+test('draft validation rejects stocked inventory',()=>{const p=product();assert.equal(assertDraft(p,section),'Row,Seat');p.variants[0].inventoryQuantity=1;assert.throws(()=>assertDraft(p,section),/inventory/)});
+test('batch validation rejects mismatched section',()=>assert.throws(()=>validateBatch(batch,'106',id),/Wrong section/));
+test('batch validation accepts valid seat',()=>assert.equal(validateBatch(batch,section,id).length,1));
+test('paginated Shopify inspection returns all variants',async()=>{let n=0;const p=product();const graphql=async()=>({product:{...p,variants:{nodes:[{...p.variants[0],id:String(++n)}],pageInfo:{hasNextPage:n===1,endCursor:'next'}}}});const result=await inspect(graphql,id);assert.equal(result.variants.length,2)});
+test('option staging dry run never mutates',async()=>{const p=product();const graphql=async()=>({product:{...p,variants:{nodes:p.variants,pageInfo:{hasNextPage:false}}}});const result=await stageOptions({graphql,id,section});assert.equal(result.writes,0)});
+test('variant staging dry run never mutates',async()=>{const p=product();const graphql=async()=>({product:{...p,variants:{nodes:p.variants,pageInfo:{hasNextPage:false}}}});const result=await stageBatch({graphql,id,section,batch});assert.equal(result.writes,0)});
+test('existing correct seat variants are idempotent',async()=>{const p=product();p.variants.push({id:'gid://shopify/ProductVariant/2',sku:'WM-ST-105-B-06',price:'160.00',inventoryQuantity:0,inventoryPolicy:'DENY'});const graphql=async()=>({product:{...p,variants:{nodes:p.variants,pageInfo:{hasNextPage:false}}}});const result=await stageBatch({graphql,id,section,batch,execute:true});assert.equal(result.result,'ALREADY_CREATED')});
