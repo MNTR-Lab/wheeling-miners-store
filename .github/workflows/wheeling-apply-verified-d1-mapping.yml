@@ -1,0 +1,104 @@
+name: Wheeling verified D1 mapping (guarded)
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'dry-run performs offline checks only; execute changes production D1'
+        type: choice
+        options: [dry-run, execute]
+        default: dry-run
+        required: true
+      confirmation:
+        description: 'For execute only: MAP_3737_UNRELEASED_SEATS'
+        required: false
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: wheeling-d1-mapping-production
+  cancel-in-progress: false
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Download approved mapping artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wheeling-offline-d1-mapping-39866444459
+          run-id: 39866444459
+          github-token: ${{ github.token }}
+          path: verified-mapping
+      - name: Rebuild D1-compatible guarded import
+        run: |
+          mkdir -p output
+          node tools/prepare-d1-import.mjs verified-mapping/verified-seat-mapping.sql output/mapping-import.sql
+          python3 - <<'PY'
+          import csv,sqlite3
+          from pathlib import Path
+          seats=list(csv.DictReader(open('data/staging/d1-seats.csv',newline='')))
+          assert len(seats)==3737
+          db=sqlite3.connect(':memory:')
+          db.executescript('''CREATE TABLE seats (sku TEXT PRIMARY KEY,section TEXT,row_label TEXT,seat_number INTEGER,price_cents INTEGER,section_product_sku TEXT,shopify_variant_id TEXT,status TEXT,updated_at TEXT);
+          CREATE TABLE seat_admin_guard(id INTEGER PRIMARY KEY CHECK(id=1),valid INTEGER NOT NULL CHECK(valid=1));''')
+          db.executemany('INSERT INTO seats(sku,section,row_label,seat_number,price_cents,section_product_sku,shopify_variant_id,status) VALUES(?,?,?,?,?,?,?,?)',[(s['sku'],s['section'],s['row_label'],int(s['seat_number']),int(s['price_cents']),'WM-ST-SEC-'+s['section'],s.get('shopify_variant_id') or None,s['status']) for s in seats])
+          db.commit()
+          sql=Path('output/mapping-import.sql').read_text()
+          try:
+            db.executescript('BEGIN TRANSACTION;\n'+sql+'\nCOMMIT;')
+          except Exception:
+            db.rollback()
+            raise
+          n,m,u=db.execute("SELECT COUNT(*),COUNT(shopify_variant_id),SUM(status='UNRELEASED') FROM seats").fetchone()
+          assert (n,m,u)==(3737,3737,3737)
+          assert db.execute('SELECT COUNT(DISTINCT shopify_variant_id) FROM seats').fetchone()[0]==3737
+          print('OFFLINE_SQLITE_REHEARSAL_PASSED: 3737 mapped, 3737 unreleased')
+          PY
+      - name: Gate production execution
+        if: ${{ inputs.action == 'execute' }}
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          test "$CONFIRMATION" = 'MAP_3737_UNRELEASED_SEATS' || { echo 'Missing exact confirmation'; exit 1; }
+          test -n '${{ secrets.CLOUDFLARE_API_TOKEN }}' || { echo 'CLOUDFLARE_API_TOKEN repository secret missing'; exit 1; }
+      - name: Production preflight and mapping
+        if: ${{ inputs.action == 'execute' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID secret'; exit 1; }
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats --remote --command "SELECT COUNT(*) AS n,COUNT(shopify_variant_id) AS mapped,SUM(status='UNRELEASED') AS unreleased FROM seats" --json > output/preflight.json
+          node --input-type=module <<'JS'
+          import {readFileSync} from 'node:fs';
+          const j=JSON.parse(readFileSync('output/preflight.json','utf8'));
+          const r=j[0]?.results?.[0];
+          if(r?.n!==3737||r?.mapped!==0||r?.unreleased!==3737)throw Error('PRODUCTION_PREFLIGHT_FAILED');
+          console.log('PRODUCTION_PREFLIGHT_PASSED');
+          JS
+          # D1 import uses its own transaction handling. Any guard failure must abort the import.
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats --remote --file output/mapping-import.sql --yes
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats --remote --command "SELECT COUNT(*) AS n,COUNT(shopify_variant_id) AS mapped,COUNT(DISTINCT shopify_variant_id) AS unique_ids,SUM(status='UNRELEASED') AS unreleased FROM seats" --json > output/postflight.json
+          node --input-type=module <<'JS'
+          import {readFileSync} from 'node:fs';
+          const j=JSON.parse(readFileSync('output/postflight.json','utf8'));
+          const r=j[0]?.results?.[0];
+          if(r?.n!==3737||r?.mapped!==3737||r?.unique_ids!==3737||r?.unreleased!==3737)throw Error('PRODUCTION_POSTFLIGHT_FAILED');
+          console.log('PRODUCTION_MAPPING_VERIFIED_3737_UNRELEASED');
+          JS
+      - name: Save non-sensitive report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheeling-d1-mapping-review-${{ github.run_id }}
+          path: |
+            output/preflight.json
+            output/postflight.json
+          if-no-files-found: ignore
