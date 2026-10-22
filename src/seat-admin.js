@@ -1,6 +1,7 @@
-/** V64: authenticated seat administration. Sales and checkout remain disabled.
- * Configure SEAT_ADMIN_TOKEN as a Worker secret. Never embed it in browser assets.
+/** V68: authenticated seat administration plus read-only Shopify mapping preflight.
+ * SEAT_ADMIN_TOKEN must remain a Worker secret. Sales and checkout remain disabled.
  */
+import {mappingReport} from './seat-mapping-report.js';
 const HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
 const reply=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const SKU=/^WM-ST-\d{3}-[A-Z][A-Z0-9]{0,3}-\d{2,3}$/;
@@ -18,6 +19,7 @@ export async function handleSeatAdmin(request,env){
  if(!path.startsWith('/api/seats/admin/'))return null;
  if(!env.SEAT_DB)return reply({error:'Seat database unavailable'},503);
  if(!authorized(request,env))return reply({error:'Unauthorized'},401);
+ if(path==='/api/seats/admin/mapping-report')return mappingReport(request,env);
  if(path==='/api/seats/admin/summary'&&request.method==='GET'){
   const result=await env.SEAT_DB.prepare('SELECT section,status,COUNT(*) AS count FROM seats GROUP BY section,status ORDER BY section,status').all();
   return reply({mode:'ADMIN_STAGING',sales_enabled:false,sections:result.results});
@@ -28,10 +30,7 @@ export async function handleSeatAdmin(request,env){
  if(typeof sku!=='string'||!SKU.test(sku)||!['BLOCK','UNBLOCK'].includes(action)||typeof reason!=='string'||reason.trim().length<5||reason.length>500||typeof operator!=='string'||operator.trim().length<2||operator.length>120)return reply({error:'Invalid change request'},400);
  const target=action==='BLOCK'?'BLOCKED':'UNRELEASED';
  const allowed=action==='BLOCK'?"status IN ('UNRELEASED','AVAILABLE')":"status='BLOCKED'";
- // The conditional update prevents changes to HELD/SOLD seats even under concurrency.
- // D1 batch is transactional: an audit failure must roll back the update.
- // D1 batch is atomic. Audit captures the original state, then the guarded
- // update must change exactly one row or the CHECK constraint aborts all writes.
+ // Preserve the existing transactional write path already tested on D1.
  const eligible=action==='BLOCK'?"status IN ('UNRELEASED','AVAILABLE')":"status='BLOCKED'";
  const statements=[
   env.SEAT_DB.prepare('DELETE FROM seat_admin_guard WHERE id=1'),
@@ -40,7 +39,7 @@ export async function handleSeatAdmin(request,env){
   env.SEAT_DB.prepare('INSERT INTO seat_admin_guard (id,valid) VALUES (1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)')
  ];
  try{
-  const result=await env.SEAT_DB.batch(statements);
+  await env.SEAT_DB.batch(statements);
   return reply({ok:true,sku,action,status:target,mode:'ADMIN_STAGING',sales_enabled:false});
  }catch(e){return reply({error:'Seat unavailable or change could not be committed',code:'CHANGE_REJECTED'},409);}
 }
