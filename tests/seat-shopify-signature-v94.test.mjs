@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {webcrypto,createHmac} from 'node:crypto';
+import {validShopifySignature} from '../src/seat-shopify-webhook-signature.js';
+if(!globalThis.crypto)globalThis.crypto=webcrypto;
+const secret='v94-local-test-secret';
+const payload=new TextEncoder().encode('{"id":123,"topic":"orders/paid"}');
+const sign=bytes=>createHmac('sha256',secret).update(bytes).digest('base64');
+test('valid ArrayBuffer signature',async()=>assert.equal(await validShopifySignature(payload.buffer,sign(payload),secret),true));
+test('valid Uint8Array signature',async()=>assert.equal(await validShopifySignature(payload,sign(payload),secret),true));
+test('valid sliced byte view',async()=>{const padded=new Uint8Array(payload.length+4);padded.set(payload,2);assert.equal(await validShopifySignature(padded.subarray(2,-2),sign(payload),secret),true)});
+test('tampered bytes rejected',async()=>assert.equal(await validShopifySignature(new TextEncoder().encode('{"id":124}'),sign(payload),secret),false));
+test('wrong secret rejected',async()=>assert.equal(await validShopifySignature(payload,sign(payload),'other'),false));
+test('missing signature rejected',async()=>assert.equal(await validShopifySignature(payload,null,secret),false));
+test('malformed base64 rejected',async()=>assert.equal(await validShopifySignature(payload,'bad',secret),false));
+test('extra whitespace rejected',async()=>assert.equal(await validShopifySignature(payload,sign(payload)+'\n',secret),false));
+test('empty secret rejected',async()=>assert.equal(await validShopifySignature(payload,sign(payload),''),false));
+test('invalid body rejected',async()=>assert.equal(await validShopifySignature('string',sign(payload),secret),false));
