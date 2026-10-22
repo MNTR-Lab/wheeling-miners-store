@@ -1,0 +1,30 @@
+name: Shopify full seat reconciliation (read only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SHOPIFY_SHOP_DOMAIN: ${{ secrets.SHOPIFY_SHOP_DOMAIN }}
+      SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+      SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Obtain temporary Shopify token
+        run: node tools/get-shopify-admin-token.mjs
+      - name: Read and validate all 3,737 Shopify seat variants
+        run: node tools/export-complete-shopify-seat-map.mjs
+      - name: Upload verified mapping (never secrets)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheeling-full-shopify-seat-mapping-${{ github.run_id }}
+          path: reconciliation-output/
+          if-no-files-found: ignore
+          retention-days: 30
