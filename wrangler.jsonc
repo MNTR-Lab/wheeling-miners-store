@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wheeling-miners-store",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-22",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/seats/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "SEAT_DB",
+      "database_name": "wheeling-miners-seats",
+      "database_id": "221e3797-3ea2-477d-9a7f-7dfded620547"
+    }
+  ]
+}
