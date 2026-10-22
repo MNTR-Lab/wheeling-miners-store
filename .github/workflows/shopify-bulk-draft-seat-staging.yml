@@ -1,0 +1,61 @@
+name: Shopify bulk draft seat staging (manual only)
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Dry run first. Execute creates draft-only Shopify variants.'
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - execute
+      confirmation:
+        description: 'For execute only, enter CREATE_3700_DRAFT_SEATS_ONLY'
+        required: false
+        default: ''
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: shopify-season-seat-staging
+  cancel-in-progress: false
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SHOPIFY_SHOP_DOMAIN: ${{ secrets.SHOPIFY_SHOP_DOMAIN }}
+      SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+      SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
+      WM_SEAT_MAP_PRICE_APPROVED: 'YES'
+      WM_BULK_DRAFT_CONFIRM: ${{ inputs.confirmation }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require exact confirmation before bulk execution
+        env:
+          ACTION: ${{ inputs.action }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        shell: bash
+        run: |
+          if [[ "$ACTION" == "execute" && "$CONFIRMATION" != 'CREATE_3700_DRAFT_SEATS_ONLY' ]]; then
+            echo 'Bulk draft creation requires exact confirmation.' >&2
+            exit 1
+          fi
+      - name: Get short-lived Shopify Admin API token
+        run: node tools/get-shopify-admin-token.mjs
+      - name: Stage and verify approved draft seats
+        env:
+          ACTION: ${{ inputs.action }}
+        run: node tools/stage-all-approved-seats.mjs "$ACTION"
+      - name: Upload progress and Shopify variant IDs (including on failure)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shopify-draft-seat-staging-${{ github.run_id }}
+          path: staging-output/
+          if-no-files-found: ignore
+          retention-days: 30
