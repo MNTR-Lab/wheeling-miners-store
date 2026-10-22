@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {prepareReservationTransaction,executeReservationTransaction} from '../src/seat-reservation-transaction.js';
+const id='reserve_1234567890123',nonce='nonce_123456789012345678901234',expiry='2099-10-22T20:00:00.000Z';
+const row=(n)=>({sku:`WM-ST-105-B-${String(n).padStart(2,'0')}`,status:'AVAILABLE',hold_id:null,shopify_order_id:null,shopify_variant_id:`gid://shopify/ProductVariant/${n}`,price_cents:16000});
+const plan=()=>prepareReservationTransaction([row(1).sku,row(2).sku],[row(1),row(2)],{reservationId:id,checkoutNonce:nonce,expiresAt:expiry});
+const fake=()=>{const calls=[];return {calls,db:{prepare(sql){const entry={sql,params:[]};calls.push(entry);return {bind(...args){entry.params=args;return this}}},async batch(statements){assert.equal(statements.length,calls.length);return []}}}};
+test('plans linked multi-seat reservation',()=>{const p=plan();assert.equal(p.seatCount,2);assert.equal(p.totalCents,32000);assert.equal(p.seats[0].sku,row(1).sku)});
+test('rejects duplicate seat',()=>assert.throws(()=>prepareReservationTransaction([row(1).sku,row(1).sku],[row(1)],{reservationId:id,checkoutNonce:nonce,expiresAt:expiry}),/DUPLICATE/));
+test('rejects invalid nonce',()=>assert.throws(()=>prepareReservationTransaction([row(1).sku],[row(1)],{reservationId:id,checkoutNonce:'bad',expiresAt:expiry}),/NONCE/));
+test('rejects duplicate Shopify variant',()=>assert.throws(()=>prepareReservationTransaction([row(1).sku,row(2).sku],[row(1),{...row(2),shopify_variant_id:row(1).shopify_variant_id}],{reservationId:id,checkoutNonce:nonce,expiresAt:expiry}),/VARIANT/));
+test('cannot execute without explicit authorization',async()=>{const f=fake();await assert.rejects(executeReservationTransaction(f.db,plan()),/NOT_AUTHORIZED/);assert.equal(f.calls.length,0)});
+test('transaction includes reservation, linked seats, guarded holds in one batch',async()=>{const f=fake();const result=await executeReservationTransaction(f.db,plan(),{authorized:true});assert.equal(result.seatCount,2);assert.equal(f.calls.filter(x=>x.sql.startsWith('INSERT INTO reservation_seats')).length,2);assert.equal(f.calls.filter(x=>x.sql.startsWith('UPDATE seats')).length,2);assert.equal(f.calls.filter(x=>x.sql.includes('CASE WHEN changes()=1')).length,2);assert.equal(f.calls.filter(x=>x.sql.startsWith('INSERT INTO reservations')).length,1);});
+test('hold updates guard exact mapped variant',async()=>{const f=fake();await executeReservationTransaction(f.db,plan(),{authorized:true});for(const x of f.calls.filter(x=>x.sql.startsWith('UPDATE seats'))){assert.match(x.sql,/shopify_variant_id=\?/);assert.equal(x.params.length,4)}});
+test('tampered variant is rejected before database writes',async()=>{const f=fake(),p=plan();p.seats[1].variantId=p.seats[0].variantId;await assert.rejects(executeReservationTransaction(f.db,p,{authorized:true}),/INVALID_PLAN/);assert.equal(f.calls.length,0)});
+test('expired plan rejected before database writes',async()=>{const f=fake(),p=plan();p.expiresAt='2020-01-01T00:00:00.000Z';await assert.rejects(executeReservationTransaction(f.db,p,{authorized:true}),/INVALID_EXPIRATION/);assert.equal(f.calls.length,0)});
