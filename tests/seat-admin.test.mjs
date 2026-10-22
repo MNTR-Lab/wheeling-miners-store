@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {handleSeatAdmin} from '../src/seat-admin.js';
+const token='x'.repeat(48);
+const request=(path,body,auth=true)=>new Request('https://example.com'+path,{method:body?'POST':'GET',headers:{...(auth?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+const payload={sku:'WM-ST-101-A-01',action:'BLOCK',operator:'Admin User',reason:'Sponsor allocation'};
+test('admin endpoint refuses missing credentials',async()=>{const response=await handleSeatAdmin(request('/api/seats/admin/summary',null,false),{SEAT_DB:{},SEAT_ADMIN_TOKEN:token});assert.equal(response.status,401);});
+test('admin endpoint refuses short configured secret',async()=>{const response=await handleSeatAdmin(request('/api/seats/admin/summary'),{SEAT_DB:{},SEAT_ADMIN_TOKEN:'short'});assert.equal(response.status,401);});
+test('admin endpoint rejects invalid request before database writes',async()=>{const response=await handleSeatAdmin(request('/api/seats/admin/availability',{...payload,sku:'invalid'}),{SEAT_DB:{},SEAT_ADMIN_TOKEN:token});assert.equal(response.status,400);});
+test('admin endpoint refuses unavailable seat and reports no success',async()=>{const db={prepare:sql=>({bind(){return this;}}),batch:async()=>{throw Error('constraint violation')}};const response=await handleSeatAdmin(request('/api/seats/admin/availability',payload),{SEAT_DB:db,SEAT_ADMIN_TOKEN:token});assert.equal(response.status,409);});
+test('admin endpoint sends conditional update and audit in one batch',async()=>{const statements=[];const db={prepare:sql=>({sql,bind(...params){this.params=params;return this;}}),batch:async steps=>{statements.push(...steps);return []}};const response=await handleSeatAdmin(request('/api/seats/admin/availability',payload),{SEAT_DB:db,SEAT_ADMIN_TOKEN:token});assert.equal(response.status,200);assert.equal(statements.length,4);assert.match(statements[1].sql,/seat_admin_audit/);assert.match(statements[2].sql,/status IN \('UNRELEASED','AVAILABLE'\)/);assert.match(statements[3].sql,/changes\(\)=1/);});
+test('migration includes durable audit and fail-closed constraint',()=>{const sql=readFileSync(new URL('../src/seat-admin-schema.sql',import.meta.url),'utf8');assert.match(sql,/seat_admin_audit/);assert.match(sql,/CHECK\(valid=1\)/);});
