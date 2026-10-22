@@ -3,16 +3,17 @@ import assert from 'node:assert/strict';
 import {inspectPaidOrderOwnership} from '../src/seat-webhook-reconciliation.js';
 const id='reservation_123456789';
 const sku='WM-ST-105-B-06';
+const variant='gid://shopify/ProductVariant/456';
 const order={id:123,line_items:[{sku,quantity:1,variant_id:456}],note_attributes:[{name:'wm_reservation_id',value:id},{name:'wm_checkout_nonce',value:'nonce_1234567890123456789012'}]};
 const reservation={id,status:'HELD',checkout_nonce:'nonce_1234567890123456789012',expires_at:'2099-01-01T00:00:00.000Z',shopify_order_id:null};
-const seat={sku,status:'HELD',shopify_variant_id:'gid://shopify/ProductVariant/456',hold_id:id,hold_expires_at:'2099-01-01T00:00:00.000Z',shopify_order_id:null};
-function db({linked=[{seat_sku:sku}],rows=[seat]}={}){return {prepare(sql){return {bind(){return {first:async()=>reservation,all:async()=>({results:sql.includes('reservation_seats')?linked:rows})}}}}}}
+const seat={sku,status:'HELD',shopify_variant_id:variant,hold_id:id,hold_expires_at:'2099-01-01T00:00:00.000Z',shopify_order_id:null};
+function db({linked=[{seat_sku:sku,shopify_variant_id:variant}],rows=[seat]}={}){return {prepare(sql){return {bind(){return {first:async()=>reservation,all:async()=>({results:sql.includes('reservation_seats')?linked:rows})}}}}}}
 const inspect=(opts)=>inspectPaidOrderOwnership(order,db(opts));
 test('valid payment remains read-only and cannot trigger fulfillment',async()=>{const x=await inspect();assert.equal(x.reason,'OWNERSHIP_VERIFIED');assert.equal(x.ready_for_fulfillment,false);assert.equal(x.proposed_seat_updates,1)});
 test('missing linked seats are rejected',async()=>assert.equal((await inspect({linked:[]})).detail,'RESERVATION_SEAT_COUNT_MISMATCH'));
 test('missing inventory seats are rejected',async()=>assert.equal((await inspect({rows:[]})).detail,'DATABASE_SEAT_COUNT_MISMATCH'));
-test('duplicate inventory rows rejected',async()=>assert.equal((await inspect({rows:[seat,seat],linked:[{seat_sku:sku},{seat_sku:'WM-ST-105-B-07'}]})).detail,'RESERVATION_SEAT_COUNT_MISMATCH'));
-test('unexpected linked seat rejected',async()=>assert.equal((await inspect({linked:[{seat_sku:'WM-ST-105-B-07'}]})).detail,'RESERVATION_SEAT_SET_MISMATCH'));
+test('duplicate inventory rows rejected',async()=>assert.equal((await inspect({rows:[seat,seat],linked:[{seat_sku:sku,shopify_variant_id:variant},{seat_sku:'WM-ST-105-B-07',shopify_variant_id:'gid://shopify/ProductVariant/457'}]})).detail,'RESERVATION_SEAT_COUNT_MISMATCH'));
+test('unexpected linked seat rejected',async()=>assert.equal((await inspect({linked:[{seat_sku:'WM-ST-105-B-07',shopify_variant_id:variant}]})).detail,'RESERVATION_SEAT_SET_MISMATCH'));
 test('unexpected database seat rejected',async()=>assert.equal((await inspect({rows:[{...seat,sku:'WM-ST-105-B-07'}]})).detail,'UNEXPECTED_DATABASE_SEAT'));
 test('malformed reservation query result rejected',async()=>assert.equal((await inspect({linked:null})).detail,'INVALID_DATABASE_RESULT'));
 test('malformed seat query result rejected',async()=>assert.equal((await inspect({rows:null})).detail,'INVALID_DATABASE_RESULT'));
