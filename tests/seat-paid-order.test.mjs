@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {parsePaidSeatOrder,reconcilePaidSeats,paidOrderSqlPlan} from '../src/seat-paid-order.js';
+const order={id:123,line_items:[{sku:'WM-ST-105-B-06',variant_id:456,quantity:1}]};
+const row={sku:'WM-ST-105-B-06',shopify_variant_id:'gid://shopify/ProductVariant/456',status:'HELD',shopify_order_id:null};
+test('valid paid seat parsed',()=>assert.equal(parsePaidSeatOrder(order).seats.length,1));
+test('nonseat order ignored',()=>assert.equal(parsePaidSeatOrder({id:123,line_items:[{sku:'SHIRT'}]}).ignored,true));
+test('duplicate SKU rejected',()=>assert.throws(()=>parsePaidSeatOrder({...order,line_items:[...order.line_items,...order.line_items]}),/DUPLICATE/));
+test('non-unit quantity rejected',()=>assert.throws(()=>parsePaidSeatOrder({...order,line_items:[{...order.line_items[0],quantity:2}]}),/INVALID_LINE/));
+test('missing mapping fails',()=>assert.equal(reconcilePaidSeats(parsePaidSeatOrder(order),[]).ready,false));
+test('held mapped seat eligible for future fulfillment',()=>assert.equal(reconcilePaidSeats(parsePaidSeatOrder(order),[row]).ready,true));
+test('unreleased seat fails',()=>assert.equal(reconcilePaidSeats(parsePaidSeatOrder(order),[{...row,status:'UNRELEASED'}]).ready,false));
+test('sold same order is idempotent replay',()=>assert.equal(reconcilePaidSeats(parsePaidSeatOrder(order),[{...row,status:'SOLD',shopify_order_id:'123'}]).replayed,true));
+test('sold other order rejected',()=>assert.equal(reconcilePaidSeats(parsePaidSeatOrder(order),[{...row,status:'SOLD',shopify_order_id:'999'}]).ready,false));
+test('variant mismatch rejected',()=>assert.equal(reconcilePaidSeats(parsePaidSeatOrder(order),[{...row,shopify_variant_id:'gid://shopify/ProductVariant/999'}]).ready,false));
+test('SQL plan requires reservation ownership',()=>assert.throws(()=>paidOrderSqlPlan(parsePaidSeatOrder(order),{reservationId:'bad'}),/INVALID_RESERVATION/));
+test('SQL plan includes reservation and variant guards',()=>{const p=paidOrderSqlPlan(parsePaidSeatOrder(order),{reservationId:'reservation_123456789'});assert.equal(p.length,1);assert.match(p[0].sql,/hold_id=\?/);assert.equal(p[0].expectedChanges,1);});
