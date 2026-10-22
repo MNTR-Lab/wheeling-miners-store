@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {parseD1SchemaResults,inspectD1QueryResults} from '../tools/verify-d1-live-schema.mjs';
+const cols={seats:['sku','status','hold_id','hold_expires_at','shopify_order_id','shopify_variant_id','price_cents'],reservations:['id','status','checkout_nonce','expires_at','shopify_order_id'],reservation_seats:['reservation_id','seat_sku','shopify_variant_id'],seat_admin_guard:['id','valid']};
+const fixture=()=>[{results:[{name:'seat_admin_guard',sql:'CREATE TABLE seat_admin_guard (id INTEGER, valid INTEGER CHECK(valid=1))'}]},...Object.entries(cols).map(([name,columns])=>({results:columns.map(name=>({name,type:'TEXT'}))}))];
+test('valid D1 result passes preflight',()=>assert.equal(inspectD1QueryResults(fixture()).report.ready,true));
+test('missing columns are detected',()=>{const f=fixture();f[2].results.pop();assert.equal(inspectD1QueryResults(f).report.ready,false)});
+test('legacy integer expiry detected',()=>{const f=fixture();f[2].results.find(x=>x.name==='expires_at').type='INTEGER';assert.ok(inspectD1QueryResults(f).report.issues.some(x=>x.reason==='LEGACY_INTEGER_EXPIRY_INCOMPATIBLE'))});
+test('missing guard blocks',()=>{const f=fixture();f[0].results=[];assert.equal(inspectD1QueryResults(f).report.ready,false)});
+test('malformed result rejected',()=>assert.throws(()=>parseD1SchemaResults({}),/EXPECTED_D1_RESULT_ARRAY/));
+test('incomplete results rejected',()=>assert.throws(()=>parseD1SchemaResults([]),/EXPECTED_FIVE_QUERIES/));
