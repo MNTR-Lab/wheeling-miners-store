@@ -1,5 +1,5 @@
-/** V92: fail-closed, atomic D1 fulfillment planner/executor. NOT routed or enabled.
- * A trusted caller MUST verify Shopify HMAC and reservation/order ownership independently.
+/** V97: fail-closed atomic D1 fulfillment planner/executor. NOT routed or enabled.
+ * Trusted caller MUST independently verify Shopify HMAC and reservation ownership.
  */
 import {parsePaidSeatOrder,reconcilePaidSeats} from './seat-paid-order.js';
 const RESERVATION=/^[A-Za-z0-9_-]{16,128}$/;
@@ -35,16 +35,19 @@ export function prepareFulfillment(order,reservation,rows){
  });
  return {replayed:false,orderId:parsed.orderId,seatCount:operations.length,operations};
 }
-/** D1.batch must be transactional; a CHECK(valid=1) guard forces rollback on a failed UPDATE. */
+/** D1.batch must be transactional; a CHECK(valid=1) guard forces rollback on failed UPDATE. */
 export async function executeFulfillment(db,plan,{confirmedOwnership=false}={}){
  if(confirmedOwnership!==true)fail('OWNERSHIP_NOT_VERIFIED');
  if(!db?.prepare||!db?.batch)fail('DATABASE_UNAVAILABLE');
+ // Reject untrusted SQL before other plan metadata checks; all metadata guards remain mandatory.
+ if(Array.isArray(plan?.operations))for(const op of plan.operations){
+  if(op?.sql!==UPDATE||op.expectedChanges!==1||!Array.isArray(op.params)||op.params.length!==4)fail('UNTRUSTED_SQL');
+ }
  if(!plan||!ORDER.test(String(plan.orderId??''))||!Number.isSafeInteger(plan.seatCount)||plan.seatCount<1||plan.seatCount>8)fail('INVALID_PLAN');
  if(plan.replayed){if(!Array.isArray(plan.operations)||plan.operations.length!==0)fail('INVALID_REPLAY_PLAN');return {ok:true,replayed:true,seatCount:plan.seatCount};}
  if(!Array.isArray(plan.operations)||plan.operations.length!==plan.seatCount)fail('INVALID_PLAN');
  const skus=new Set(),variants=new Set();
  for(const op of plan.operations){
-  if(op?.sql!==UPDATE||op.expectedChanges!==1||!Array.isArray(op.params)||op.params.length!==4)fail('UNTRUSTED_SQL');
   const [orderId,sku,reservationId,variantId]=op.params;
   if(orderId!==plan.orderId||typeof sku!=='string'||!SKU.test(sku)||typeof reservationId!=='string'||!RESERVATION.test(reservationId)||typeof variantId!=='string'||!VARIANT.test(variantId))fail('INVALID_PLAN_PARAMETERS');
   if(skus.has(sku)||variants.has(variantId))fail('DUPLICATE_PLAN_SEAT_OR_VARIANT');
