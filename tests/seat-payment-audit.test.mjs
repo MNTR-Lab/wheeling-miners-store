@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {auditPaidOrder,handlePaymentAudit} from '../src/seat-payment-audit.js';
+const order={id:123,line_items:[{sku:'WM-ST-105-B-06',variant_id:456,quantity:1}]};
+const row={sku:'WM-ST-105-B-06',status:'HELD',shopify_variant_id:'gid://shopify/ProductVariant/456',shopify_order_id:null,hold_id:'reservation_123456789',hold_expires_at:'2026-10-22T20:00:00.000Z'};
+function db(rows){return {prepare(sql){assert.match(sql,/SELECT/);return {bind(...skus){return {async all(){return {results:rows.filter(r=>skus.includes(r.sku))}}}}}}}};
+test('mapped held seat stays read-only',async()=>{const x=await auditPaidOrder(order,db([row]));assert.equal(x.seat_mapping_valid,true);assert.equal(x.ready_for_automatic_fulfillment,false);assert.equal(x.common_hold_present,true)});
+test('missing seat fails',async()=>{const x=await auditPaidOrder(order,db([]));assert.equal(x.seat_mapping_valid,false);assert.equal(x.issues[0].reason,'UNKNOWN_SEAT')});
+test('wrong variant fails',async()=>{const x=await auditPaidOrder(order,db([{...row,shopify_variant_id:'gid://shopify/ProductVariant/789'}]));assert.equal(x.seat_mapping_valid,false)});
+test('unreleased seat fails',async()=>{const x=await auditPaidOrder(order,db([{...row,status:'UNRELEASED'}]));assert.equal(x.seat_mapping_valid,false)});
+test('same order replay is identified',async()=>{const x=await auditPaidOrder(order,db([{...row,status:'SOLD',shopify_order_id:'123'}]));assert.equal(x.replayed,true)});
+test('missing reservation claim flagged',async()=>{const x=await auditPaidOrder(order,db([{...row,hold_id:null}]));assert.equal(x.common_hold_present,false)});
+test('nonseat order ignored',async()=>{const x=await auditPaidOrder({id:123,line_items:[{sku:'SHIRT'}]},db([]));assert.equal(x.ignored,true)});
+test('invalid duplicate order rejected',async()=>await assert.rejects(auditPaidOrder({...order,line_items:[...order.line_items,...order.line_items]},db([row])),/DUPLICATE/));
+test('POST required',async()=>{const r=await handlePaymentAudit(new Request('https://example.com',{method:'GET'}),{SEAT_DB:db([row])});assert.equal(r.status,405)});
+test('invalid json rejected',async()=>{const r=await handlePaymentAudit(new Request('https://example.com',{method:'POST',body:'bad'}),{SEAT_DB:db([row])});assert.equal(r.status,400)});
+test('audit endpoint returns safe read-only response',async()=>{const r=await handlePaymentAudit(new Request('https://example.com',{method:'POST',body:JSON.stringify(order)}),{SEAT_DB:db([row])});assert.equal(r.status,200);assert.equal((await r.json()).ready_for_automatic_fulfillment,false)});
