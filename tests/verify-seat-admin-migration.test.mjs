@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {verifyAdminMigration} from '../tools/verify-seat-admin-migration.mjs';
+const schema=readFileSync(new URL('../src/seat-admin-schema.sql',import.meta.url),'utf8');
+const valid={schema,existingTables:['seats','reservations','reservation_seats'],seatCount:3737,sectionCount:63};
+test('valid staging inspection remains explicitly unapproved',()=>{const x=verifyAdminMigration(valid);assert.equal(x.safe_to_review,true);assert.equal(x.approved_to_apply,false);assert.equal(x.sales_enabled,false);});
+test('rejects destructive SQL',()=>{assert.equal(verifyAdminMigration({...valid,schema:schema+'\nDELETE FROM seats;'}).safe_to_review,false);});
+test('flags already existing tables',()=>{assert.equal(verifyAdminMigration({...valid,existingTables:['seats','seat_admin_guard']}).safe_to_review,false);});
+test('requires counts',()=>{assert.equal(verifyAdminMigration({...valid,seatCount:0}).safe_to_review,false);});
+test('requires both migration tables',()=>{assert.equal(verifyAdminMigration({...valid,schema:'CREATE TABLE IF NOT EXISTS seat_admin_audit (id INTEGER);'}).safe_to_review,false);});
