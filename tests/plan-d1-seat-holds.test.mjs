@@ -1,0 +1,10 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {planSeatHold} from '../tools/plan-d1-seat-holds.mjs';
+const opts={skus:['WM-ST-101-A-01','WM-ST-101-A-02'],now:1000,reservationId:'test-hold'};
+test('produces explicit guarded offline transaction plan',()=>{const x=planSeatHold(opts);assert.equal(x.mode,'OFFLINE_PLAN_ONLY');assert.equal(x.sales_enabled,false);assert.equal(x.requires_atomic_transaction,true);assert.equal(x.steps.length,5);assert.equal(x.steps.filter(s=>s.requiredChanges===1).length,2);assert.equal(x.expiresAt,1600)});
+test('does not embed seat input into SQL',()=>{const x=planSeatHold(opts);assert.ok(x.steps.every(s=>!s.sql.includes('WM-ST-101')));assert.deepEqual(x.steps[1].params,['test-hold',1600,'WM-ST-101-A-01',1000])});
+test('rejects duplicate and invalid SKUs',()=>{assert.throws(()=>planSeatHold({...opts,skus:[opts.skus[0],opts.skus[0]]}));assert.throws(()=>planSeatHold({...opts,skus:['BAD']}))});
+test('rejects invalid time and TTL',()=>{assert.throws(()=>planSeatHold({...opts,now:0}));assert.throws(()=>planSeatHold({...opts,ttlSeconds:901}));assert.throws(()=>planSeatHold({...opts,ttlSeconds:0}))});
+test('requires mapped and available seats before hold',()=>{const x=planSeatHold(opts);for(const s of x.steps.filter(s=>s.requiredChanges)) {assert.match(s.sql,/shopify_variant_id IS NOT NULL/);assert.match(s.sql,/status='AVAILABLE'/);assert.match(s.sql,/hold_expires_at<=\?/);}});
+test('does not expose an executable D1 client',()=>{const x=planSeatHold(opts);assert.equal(x.checkout_enabled,false);assert.equal(x.requires_rowcount_guards,true);assert.match(x.warning,/DO NOT run/)});
