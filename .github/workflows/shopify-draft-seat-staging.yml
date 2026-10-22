@@ -32,7 +32,8 @@ jobs:
     timeout-minutes: 15
     env:
       SHOPIFY_SHOP_DOMAIN: ${{ secrets.SHOPIFY_SHOP_DOMAIN }}
-      SHOPIFY_ADMIN_TOKEN: ${{ secrets.SHOPIFY_ADMIN_TOKEN }}
+      SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+      SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
       WM_SEAT_MAP_PRICE_APPROVED: 'YES'
       WM_SEASON_WRITE_CONFIRM: I_APPROVE_DRAFT_SECTION_${{ inputs.section }}
     steps:
@@ -40,13 +41,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify runner input
+      - name: Validate requested section and batch
         env:
           SECTION: ${{ inputs.section }}
           PART: ${{ inputs.part }}
+        shell: bash
         run: |
           [[ "$SECTION" =~ ^[0-9]{3}$ ]] || exit 1
           [[ "$PART" =~ ^[0-9]+$ ]] || exit 1
+      - name: Get short-lived Shopify Admin API token
+        run: node tools/get-shopify-admin-token.mjs
       - name: Inspect or stage one approved section
         env:
           SECTION: ${{ inputs.section }}
