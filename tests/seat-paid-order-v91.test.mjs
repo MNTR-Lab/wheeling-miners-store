@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {parsePaidSeatOrder,reconcilePaidSeats,paidOrderSqlPlan} from '../src/seat-paid-order.js';
+const a={sku:'WM-ST-105-B-06',variant_id:456,quantity:1};
+const b={sku:'WM-ST-105-B-07',variant_id:457,quantity:1};
+const order={id:123,line_items:[a,b]};
+const parsed=parsePaidSeatOrder(order);
+const row=(sku,variant)=>({sku,shopify_variant_id:`gid://shopify/ProductVariant/${variant}`,status:'HELD',shopify_order_id:null});
+test('valid two-seat paid order',()=>assert.equal(parsed.seats.length,2));
+test('duplicate variant across distinct seats rejected',()=>assert.throws(()=>parsePaidSeatOrder({...order,line_items:[a,{...b,variant_id:456}]}),/DUPLICATE_PAID_VARIANT/));
+test('invalid zero and padded variant rejected',()=>{for(const variant_id of [0,'00123',null])assert.throws(()=>parsePaidSeatOrder({id:123,line_items:[{...a,variant_id}]}),/INVALID_LINE_ITEM/)});
+test('seat limit cannot exceed eight',()=>assert.throws(()=>parsePaidSeatOrder(order,{maxSeats:9}),/INVALID_SEAT_LIMIT/));
+test('unexpected database seat rejected',()=>assert.throws(()=>reconcilePaidSeats(parsed,[row(a.sku,456),row('WM-ST-105-B-99',999)]),/UNEXPECTED_DB_SKU/));
+test('duplicate database row rejected',()=>assert.throws(()=>reconcilePaidSeats(parsed,[row(a.sku,456),row(a.sku,456)]),/DUPLICATE_DB_SKU/));
+test('missing seat is not ready',()=>assert.equal(reconcilePaidSeats(parsed,[row(a.sku,456)]).ready,false));
+test('exact seat set reconciles',()=>assert.equal(reconcilePaidSeats(parsed,[row(a.sku,456),row(b.sku,457)]).ready,true));
+test('SQL plan rejects forged duplicate variant',()=>assert.throws(()=>paidOrderSqlPlan({...parsed,seats:[parsed.seats[0],{...parsed.seats[1],variantId:'456'}]},{reservationId:'reservation_123456789'}),/DUPLICATE_PAID_VARIANT/));
+test('SQL plan remains guarded',()=>{const plan=paidOrderSqlPlan(parsed,{reservationId:'reservation_123456789'});assert.equal(plan.length,2);assert.ok(plan.every(x=>x.expectedChanges===1&&x.sql.includes("status='HELD'")))});
