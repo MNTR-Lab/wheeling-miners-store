@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {auditSeatBlockChange} from '../tools/seat-block-audit.mjs';
+const a='WM-ST-101-A-01',b='WM-ST-101-A-02';
+const run=(seats,action='BLOCK',skus=[a])=>auditSeatBlockChange({seats,skus,action,operator:'admin@example.com',reason:'Sponsor allocation'});
+test('unreleased seat can be blocked',()=>{const r=run([{sku:a,status:'UNRELEASED'}]);assert.equal(r.eligible,true);assert.equal(r.findings[0].to,'BLOCKED');assert.equal(r.executable,false);});
+test('blocked seat returns only to unreleased',()=>{const r=run([{sku:a,status:'BLOCKED'}],'UNBLOCK');assert.equal(r.eligible,true);assert.equal(r.findings[0].to,'UNRELEASED');});
+test('sold and held seats cannot be blocked',()=>{for(const status of ['SOLD','HELD'])assert.equal(run([{sku:a,status}]).eligible,false);});
+test('active hold or paid order prevents changes',()=>{assert.equal(run([{sku:a,status:'AVAILABLE',hold_id:'hold'}]).eligible,false);assert.equal(run([{sku:a,status:'BLOCKED',shopify_order_id:'123'}],'UNBLOCK').eligible,false);});
+test('unknown seat prevents group approval',()=>{const r=run([{sku:a,status:'AVAILABLE'}],'BLOCK',[a,b]);assert.equal(r.eligible,false);assert.equal(r.findings[1].reason,'UNKNOWN_SEAT');});
+test('duplicate export SKUs are rejected',()=>{assert.throws(()=>run([{sku:a,status:'AVAILABLE'},{sku:a,status:'AVAILABLE'}]),/Duplicate SKU/);});
+test('invalid export status is rejected',()=>{assert.throws(()=>run([{sku:a,status:'WHATEVER'}]),/Malformed/);});
