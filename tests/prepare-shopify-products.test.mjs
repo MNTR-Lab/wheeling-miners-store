@@ -1,0 +1,15 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {convertProducts} from '../tools/prepare-shopify-products.mjs';
+const product={id:'gid://shopify/Product/123',status:'DRAFT',variants:{nodes:[{sku:'WM-ST-SEC-105'}],pageInfo:{hasNextPage:false}}};
+const run=(p)=>convertProducts(p,{requireComplete:false});
+test('converts GraphQL nodes',()=>assert.match(run({data:{products:{nodes:[product],pageInfo:{hasNextPage:false}}}}).csv,/"105","gid:\/\/shopify\/Product\/123"/));
+test('converts edges',()=>assert.equal(run({products:{edges:[{node:product}]}}).summary.section_products,1));
+test('ignores unrelated products',()=>assert.equal(run([product,{id:'gid://shopify/Product/999',status:'ACTIVE',variants:[{sku:'OTHER'}]}]).summary.section_products,1));
+test('rejects duplicate sections',()=>assert.throws(()=>run([product,{...product,id:'gid://shopify/Product/124'}]),/Duplicate/));
+test('rejects active products',()=>assert.throws(()=>run([{...product,status:'ACTIVE'}]),/Non-draft/));
+test('rejects missing variants',()=>assert.throws(()=>run([{...product,variants:{nodes:[]}}]),/Missing complete/));
+test('rejects incomplete product pagination',()=>assert.throws(()=>run({products:{nodes:[product],pageInfo:{hasNextPage:true}}}),/paginated/));
+test('rejects incomplete variant pagination',()=>assert.throws(()=>run([{...product,variants:{nodes:[{sku:'WM-ST-SEC-105'}],pageInfo:{hasNextPage:true}}}]),/paginated/));
+test('requires all 63 by default',()=>assert.throws(()=>convertProducts([product]),/Incomplete/));
+test('never enables sales or mutates Shopify',()=>{const x=run([product]);assert.equal(x.summary.sales_enabled,false);assert.equal(x.summary.shopify_mutations,0)});
