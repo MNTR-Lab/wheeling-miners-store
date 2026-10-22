@@ -6,7 +6,7 @@
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/seats/*"]
+    "run_worker_first": ["/api/seats/*", "/seat-selector", "/seat-selector.html"]
   },
   "d1_databases": [
     {
