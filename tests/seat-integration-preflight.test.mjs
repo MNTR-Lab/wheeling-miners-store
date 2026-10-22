@@ -1,0 +1,13 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {integrationPreflight} from '../tools/seat-integration-preflight.mjs';
+const seat={sku:'WM-ST-105-A-01',section:'105',row_label:'A',seat_number:'1',price_cents:'16000',status:'UNRELEASED',shopify_variant_id:''};
+const variant={id:'gid://shopify/ProductVariant/123',sku:seat.sku,price:'160.00',inventoryQuantity:0,inventoryPolicy:'DENY'};
+const product={id:'gid://shopify/Product/123',status:'DRAFT',options:[{name:'Row'},{name:'Seat'}],variants:{nodes:[variant],pageInfo:{hasNextPage:false}}};
+const data={meta:{mode:'READ_ONLY',sales_enabled:false,product_count:1,variant_count:1},data:{products:{nodes:[product],pageInfo:{hasNextPage:false}}}};
+test('a matching offline export is diagnostic and never authorizes sales',()=>{const r=integrationPreflight([seat],data);assert.equal(r.sales_enabled,false);assert.equal(r.ready_for_sales,false);assert.equal(r.shopify_mutations,0);assert.equal(r.d1_mutations,0);assert.equal(r.stages.shopify_export_complete,true);assert.equal(r.stages.independent_venue_manifest_approved,false);});
+test('detects nonzero Shopify inventory',()=>{const changed=structuredClone(data);changed.data.products.nodes[0].variants.nodes[0].inventoryQuantity=5;const r=integrationPreflight([seat],changed);assert.ok(r.issue_counts.NONZERO_SHOPIFY_INVENTORY);});
+test('rejects incomplete product pagination',()=>{const changed=structuredClone(data);changed.data.products.pageInfo.hasNextPage=true;assert.throws(()=>integrationPreflight([seat],changed),/Incomplete Shopify/);});
+test('rejects incomplete variant pagination',()=>{const changed=structuredClone(data);changed.data.products.nodes[0].variants.pageInfo.hasNextPage=true;assert.throws(()=>integrationPreflight([seat],changed),/Incomplete variants/);});
+test('rejects inconsistent metadata',()=>{const changed=structuredClone(data);changed.meta.variant_count=3;assert.throws(()=>integrationPreflight([seat],changed),/metadata/);});
+test('rejects unsafe export metadata',()=>{const changed=structuredClone(data);changed.meta.sales_enabled=true;assert.throws(()=>integrationPreflight([seat],changed),/read-only/);});
