@@ -1,0 +1,11 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {evaluateSeatReleaseGate} from '../tools/seat-release-gate.mjs';
+const good={manifest:{version:'V53',issue_count:0,manifest_matches_staging:true},shopify:{version:'V52',issue_count:0},mapping:{mode:'READ_ONLY',issue_count:0},operations:{venue_manifest_signed_off:true,checkout_end_to_end_passed:true,payment_webhook_reconciled:true,oversell_prevention_verified:true,refund_cancellation_tested:true}};
+test('missing reports fail closed',()=>{const x=evaluateSeatReleaseGate();assert.ok(x.blockers.length>=3);assert.equal(x.sales_enabled,false)});
+test('even completed checklist never authorizes sales',()=>{const x=evaluateSeatReleaseGate(good);assert.equal(x.checklist_complete,true);assert.equal(x.authorization_granted,false);assert.equal(x.ready_for_sales,false)});
+test('manifest mismatch blocks',()=>assert.ok(evaluateSeatReleaseGate({...good,manifest:{...good.manifest,issue_count:1}}).blockers.length));
+test('Shopify mismatch blocks',()=>assert.ok(evaluateSeatReleaseGate({...good,shopify:{...good.shopify,issue_count:1}}).blockers.length));
+test('mapping audit must be read-only',()=>assert.ok(evaluateSeatReleaseGate({...good,mapping:{...good.mapping,mode:'WRITE'}}).blockers.length));
+for(const key of Object.keys(good.operations))test('missing '+key+' blocks',()=>{const operations={...good.operations,[key]:false};assert.ok(evaluateSeatReleaseGate({...good,operations}).blockers.length)});
+test('report never mutates or grants approval',()=>{const x=evaluateSeatReleaseGate(good);assert.equal(x.shopify_mutations,0);assert.equal(x.d1_mutations,0);assert.equal(x.authorization_granted,false)});
