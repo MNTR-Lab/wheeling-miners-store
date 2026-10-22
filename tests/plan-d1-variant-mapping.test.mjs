@@ -1,0 +1,15 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {planMapping} from '../tools/plan-d1-variant-mapping.mjs';
+const s={sku:'WM-ST-105-A-01',section:'105',row_label:'A',seat_number:'1',price_cents:'16000',status:'UNRELEASED',shopify_variant_id:''};
+const v={sku:s.sku,variant_id:'gid://shopify/ProductVariant/123',product_sku:'WM-ST-SEC-105',price_cents:'16000',inventory_quantity:'0',product_status:'DRAFT'};
+const a={sku:s.sku,section:'105',row_label:'A',seat_number:'1',price_cents:'16000',approved:'YES'};
+const run=(ss=[s],vv=[v],aa=[a])=>planMapping(ss,vv,aa,{requireComplete:false});
+test('valid independently approved staging input generates review-only SQL',()=>{const r=run();assert.equal(r.issue_count,0);assert.equal(r.statement_count,1);assert.match(r.sql,/AND status='UNRELEASED' AND shopify_variant_id IS NULL/);assert.equal(r.sales_enabled,false);assert.equal(r.executed,false)});
+test('unapproved manifest blocks SQL',()=>assert.equal(run([s],[v],[{...a,approved:'NO'}]).sql,null));
+test('duplicate variant IDs block SQL',()=>{const s2={...s,sku:'WM-ST-105-A-02',seat_number:'2'};assert.equal(run([s,s2],[v,{...v,sku:s2.sku}],[a,{...a,sku:s2.sku,seat_number:'2'}]).sql,null)});
+test('already mapped seat blocks SQL',()=>assert.equal(run([{...s,shopify_variant_id:v.variant_id}]).sql,null));
+test('nonzero inventory blocks SQL',()=>assert.equal(run([s],[{...v,inventory_quantity:'1'}]).sql,null));
+test('wrong section product blocks SQL',()=>assert.equal(run([s],[{...v,product_sku:'WM-ST-SEC-106'}]).sql,null));
+test('missing variant blocks SQL',()=>assert.throws(()=>run([s],[],[a]),/Shopify is empty/));
+test('incomplete inventory blocks SQL by default',()=>assert.equal(planMapping([s],[v],[a]).sql,null));
+test('released seat blocks SQL',()=>assert.equal(run([{...s,status:'AVAILABLE'}]).sql,null));
