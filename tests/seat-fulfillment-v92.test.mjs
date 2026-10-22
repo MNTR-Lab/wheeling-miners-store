@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {prepareFulfillment,executeFulfillment} from '../src/seat-fulfillment-transaction.js';
+const reservation={id:'reservation_123456789',status:'HELD',shopify_order_id:'123'};
+const order={id:123,line_items:[{sku:'WM-ST-105-A-01',variant_id:456,quantity:1}]};
+const row={sku:'WM-ST-105-A-01',status:'HELD',shopify_variant_id:'gid://shopify/ProductVariant/456',hold_id:reservation.id,hold_expires_at:'2099-01-01T00:00:00Z',shopify_order_id:null};
+const plan=()=>prepareFulfillment(order,reservation,[row]);
+const db={prepare(sql){return {sql,bind(){return this}}},batch:async()=>{}};
+test('plan is read-only and has expected update guard',()=>{const p=plan();assert.equal(p.operations[0].expectedChanges,1);assert.match(p.operations[0].sql,/status='HELD'/)});
+test('replay requires paid reservation',()=>assert.throws(()=>prepareFulfillment(order,reservation,[{...row,status:'SOLD',shopify_order_id:'123'}]),/REPLAY_RESERVATION_NOT_PAID/));
+test('paid reservation replay accepted',()=>assert.equal(prepareFulfillment(order,{...reservation,status:'PAID'},[{...row,status:'SOLD',shopify_order_id:'123'}]).replayed,true));
+test('rejects invalid expiry',()=>assert.throws(()=>prepareFulfillment(order,reservation,[{...row,hold_expires_at:'bad'}]),/HOLD_EXPIRY_MISSING/));
+test('executor requires exact boolean ownership',async()=>assert.rejects(executeFulfillment(db,plan(),{confirmedOwnership:1}),/OWNERSHIP_NOT_VERIFIED/));
+test('executor rejects changed order id',async()=>assert.rejects(executeFulfillment(db,{...plan(),orderId:'999'},{confirmedOwnership:true}),/INVALID_PLAN_PARAMETERS/));
+test('executor rejects changed seat count',async()=>assert.rejects(executeFulfillment(db,{...plan(),seatCount:2},{confirmedOwnership:true}),/INVALID_PLAN/));
+test('executor rejects removed expectedChanges',async()=>{const p=plan();delete p.operations[0].expectedChanges;await assert.rejects(executeFulfillment(db,p,{confirmedOwnership:true}),/UNTRUSTED_SQL/)});
+test('executor rejects forged replay',async()=>assert.rejects(executeFulfillment(db,{...plan(),replayed:true},{confirmedOwnership:true}),/INVALID_REPLAY_PLAN/));
+test('executor requires D1 batch',async()=>assert.rejects(executeFulfillment({prepare:db.prepare},plan(),{confirmedOwnership:true}),/DATABASE_UNAVAILABLE/));
