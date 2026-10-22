@@ -1,0 +1,15 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {parseCSV,planVariants} from '../tools/plan-shopify-seat-variants.mjs';
+const seat={sku:'WM-ST-105-A-01',section:'105',row_label:'A',seat_number:'1',price_cents:'16000',status:'UNRELEASED',shopify_variant_id:''};
+const approved={sku:seat.sku,section:'105',row_label:'A',seat_number:'1',price_cents:'16000',approved:'YES'};
+const product={section:'105',product_id:'gid://shopify/Product/123',product_sku:'WM-ST-SEC-105',product_status:'DRAFT',variant_count:'1'};
+const errors=(s=[seat],a=[approved],p=[product])=>planVariants(s,a,p).blockers.join('|');
+test('CSV parses quotes, CRLF and escaped quotes',()=>assert.deepEqual(parseCSV('sku,note\r\na,"hello, ""world"""\r\n'),[{sku:'a',note:'hello, "world"'}]));
+test('CSV rejects malformed quotes',()=>assert.throws(()=>parseCSV('a,b\n"oops,b')));
+test('independent approval required',()=>assert.match(errors([seat],[{...approved,approved:'NO'}]),/Missing independent approval/));
+test('rejects mapped seats to avoid duplicate variants',()=>assert.match(errors([{...seat,shopify_variant_id:'gid://shopify/ProductVariant/22'}]),/already mapped/));
+test('rejects non-draft products',()=>assert.match(errors([seat],[approved],[{...product,product_status:'ACTIVE'}]),/DRAFT section product/));
+test('rejects seat price mismatch',()=>assert.match(errors([seat],[{...approved,price_cents:'6500'}]),/price mismatch/));
+test('rejects released seat',()=>assert.match(errors([{...seat,status:'AVAILABLE'}]),/already released/));
+test('rejects missing section product',()=>assert.match(errors([seat],[approved],[{...product,section:'106'}]),/invalid DRAFT section product/));
+test('rejects duplicate seat SKUs',()=>assert.match(errors([seat,seat],[approved],[product]),/duplicate sku/));
+test('never authorizes sales or performs Shopify mutation',()=>{const x=planVariants([seat],[approved],[product]);assert.equal(x.sales_enabled,false);assert.equal(x.shopify_mutations_performed,0);assert.equal(x.ready_to_generate_payloads,false);});
