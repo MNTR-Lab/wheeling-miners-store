@@ -1,4 +1,5 @@
-/** V70: authenticated seat admin, mapping preflight, season plan and variant manifest. */
+/** V71: seat admin with authenticated read-only catalog audit. */
+import {seatCatalogAudit} from './seat-catalog-audit.js';
 import {mappingReport} from './seat-mapping-report.js';
 import {seasonTicketPlan} from './season-ticket-plan.js';
 import {seatVariantManifest} from './seat-variant-manifest.js';
@@ -22,6 +23,7 @@ export async function handleSeatAdmin(request,env){
  if(path==='/api/seats/admin/mapping-report')return mappingReport(request,env);
  if(path==='/api/seats/admin/season-plan')return seasonTicketPlan(request,env);
  if(path==='/api/seats/admin/variant-manifest')return seatVariantManifest(request,env);
+ if(path==='/api/seats/admin/catalog-audit')return seatCatalogAudit(request,env);
  if(path==='/api/seats/admin/summary'&&request.method==='GET'){
   const result=await env.SEAT_DB.prepare('SELECT section,status,COUNT(*) AS count FROM seats GROUP BY section,status ORDER BY section,status').all();
   return reply({mode:'ADMIN_STAGING',sales_enabled:false,sections:result.results});
