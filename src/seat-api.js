@@ -1,24 +1,36 @@
-/** Wheeling Miners V36 read-only seat availability API.
- * Attach this fetch handler to the existing Cloudflare Worker routing; do not
- * replace the site's main fetch handler or deploy as a standalone Worker.
- * Binding: env.SEAT_DB (Cloudflare D1).
- * Ticket sales intentionally remain disabled.
+/** V38 staged reservation engine. Public checkout and holds are disabled by default.
+ * Never enable until seat-to-Shopify variant mapping, webhook verification, and
+ * inventory reconciliation are tested end to end.
  */
-const HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
-const reply = (data, status=200) => new Response(JSON.stringify(data), {status,headers:HEADERS});
-export async function handleSeatApi(request, env) {
-  const url = new URL(request.url);
-  if (!url.pathname.startsWith('/api/seats/')) return null;
-  if (request.method !== 'GET') return reply({error:'Sales and reservation endpoints are disabled until checkout integration is complete.'},405);
-  if (!env.SEAT_DB) return reply({error:'Seat database is not configured.'},503);
-  if (url.pathname === '/api/seats/status') {
-    const summary = await env.SEAT_DB.prepare('SELECT status,COUNT(*) AS count FROM seats GROUP BY status').all();
-    return reply({mode:'STAGING',checkout_enabled:false,inventory:summary.results});
-  }
-  const m = /^\/api\/seats\/section\/(\d{3})$/.exec(url.pathname);
-  if (!m) return reply({error:'Unknown seat endpoint.'},404);
-  const section=m[1];
-  const result=await env.SEAT_DB.prepare('SELECT sku,row_label AS row,seat_number,price_cents,status FROM seats WHERE section=? ORDER BY row_label,seat_number DESC').bind(section).all();
-  if (!result.results.length) return reply({error:'Section not found.'},404);
-  return reply({section,mode:'STAGING',checkout_enabled:false,seats:result.results});
+const HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
+const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:HEADERS});
+const HOLD_MINUTES=10;
+const MAX_SEATS=8;
+export async function handleSeatApi(request,env){
+ const url=new URL(request.url),path=url.pathname;
+ if(!path.startsWith('/api/seats/'))return null;
+ if(!env.SEAT_DB)return json({error:'Seat database is not configured'},503);
+ if(request.method==='GET'&&path==='/api/seats/status'){
+  const summary=await env.SEAT_DB.prepare('SELECT status, COUNT(*) AS count FROM seats GROUP BY status').all();
+  const mapped=await env.SEAT_DB.prepare('SELECT COUNT(*) AS count FROM seats WHERE shopify_variant_id IS NOT NULL').first();
+  return json({mode:'STAGING',checkout_enabled:false,holds_enabled:false,shopify_mapped_seats:mapped.count,inventory:summary.results});
+ }
+ const section=/^\/api\/seats\/section\/(\d{3})$/.exec(path);
+ if(request.method==='GET'&&section){
+  const result=await env.SEAT_DB.prepare('SELECT sku,row_label AS row,seat_number,price_cents,status FROM seats WHERE section=? ORDER BY row_label,seat_number DESC').bind(section[1]).all();
+  if(!result.results.length)return json({error:'Section not found'},404);
+  return json({section:section[1],mode:'STAGING',checkout_enabled:false,seats:result.results});
+ }
+ if(path==='/api/seats/hold'&&request.method==='POST'){
+  // No unauthenticated public holds until checkout mapping and anti-abuse are complete.
+  return json({error:'Seat reservations are not yet open. No seats were held.'},423);
+ }
+ if(path==='/api/seats/checkout'&&request.method==='POST'){
+  return json({error:'Shopify checkout is not yet enabled.'},423);
+ }
+ if(path==='/api/seats/webhooks/shopify'){
+  return json({error:'Shopify webhook is not configured.'},503);
+ }
+ if(request.method!=='GET')return json({error:'Method not allowed'},405);
+ return json({error:'Unknown seat endpoint'},404);
 }
