@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {prepareAtomicHold,executeAtomicHold} from '../src/seat-hold-transaction.js';
+const sku='WM-ST-105-B-06',sku2='WM-ST-105-B-07',rid='reservation_123456789';
+const expiry='2099-01-01T00:00:00.000Z';
+const row=(s,v)=>({sku:s,status:'AVAILABLE',hold_id:null,shopify_order_id:null,shopify_variant_id:`gid://shopify/ProductVariant/${v}`,price_cents:16000});
+const plan=()=>prepareAtomicHold([sku,sku2],[row(sku,456),row(sku2,457)],{reservationId:rid,expiresAt:expiry});
+test('prepares complete mapped multi-seat hold',()=>{const p=plan();assert.equal(p.seatCount,2);assert.equal(p.totalCents,32000);assert.equal(p.operations.length,2)});
+test('rejects unavailable seat without partial plan',()=>assert.throws(()=>prepareAtomicHold([sku,sku2],[row(sku,456),{...row(sku2,457),status:'HELD'}],{reservationId:rid,expiresAt:expiry}),/SEATS_NOT_AVAILABLE/));
+test('rejects missing seat',()=>assert.throws(()=>prepareAtomicHold([sku,sku2],[row(sku,456)],{reservationId:rid,expiresAt:expiry}),/INCOMPLETE_SEAT_SET/));
+test('rejects duplicate variant mapping',()=>assert.throws(()=>prepareAtomicHold([sku,sku2],[row(sku,456),row(sku2,456)],{reservationId:rid,expiresAt:expiry}),/INVALID_VARIANT_MAPPING/));
+test('rejects past expiration',()=>assert.throws(()=>prepareAtomicHold([sku],[row(sku,456)],{reservationId:rid,expiresAt:'2020-01-01T00:00:00.000Z'}),/INVALID_EXPIRATION/));
+test('requires explicit server authorization before any statements',async()=>{let calls=0;await assert.rejects(executeAtomicHold({prepare(){calls++},batch(){}},plan()),/HOLD_NOT_AUTHORIZED/);assert.equal(calls,0)});
+test('rejects modified SQL before database writes',async()=>{let calls=0;const p=plan();p.operations[0].sql='UPDATE seats SET status=\'SOLD\'';await assert.rejects(executeAtomicHold({prepare(){calls++;return {bind(){return this}}},batch(){}},p,{authorized:true}),/UNTRUSTED_PLAN/);assert.equal(calls,0)});
+test('builds transactional guard for each seat',async()=>{const queries=[];let batches=0;const db={prepare(sql){queries.push(sql);return {bind(){return this}}},async batch(items){batches++;assert.equal(items.length,7)}};const result=await executeAtomicHold(db,plan(),{authorized:true});assert.equal(result.ok,true);assert.equal(batches,1);assert.equal(queries.filter(q=>q.includes('CASE WHEN changes()=1')).length,2)});
+test('batch failure is not reported as a successful hold',async()=>{const db={prepare(){return {bind(){return this}}},async batch(){throw Error('D1_CONFLICT')}};await assert.rejects(executeAtomicHold(db,plan(),{authorized:true}),/D1_CONFLICT/)});
