@@ -9,34 +9,39 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Verify Cloudflare D1 directly (READ ONLY)
+      - name: Verify token and D1 separately (READ ONLY)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           node --input-type=module <<'JS'
-          const token=process.env.CLOUDFLARE_API_TOKEN;
-          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
-          if(!token||!account)throw Error('Missing Cloudflare secret(s)');
-          if(!/^[a-f0-9]{32}$/i.test(account))throw Error('CLOUDFLARE_ACCOUNT_ID is not a 32-character hex account ID');
-          const database='221e3797-3ea2-477d-9a7f-7dfded620547';
-          const endpoint=`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${database}/query`;
-          const res=await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({sql:"SELECT COUNT(*) AS n, COUNT(shopify_variant_id) AS mapped, SUM(status='UNRELEASED') AS unreleased FROM seats"})});
-          const data=await res.json().catch(()=>null);
-          console.log('Cloudflare HTTP status:',res.status);
-          if(!res.ok||!data?.success){
-            // Never log raw Cloudflare error messages, request URLs, tokens or IDs.
+          const token=process.env.CLOUDFLARE_API_TOKEN?.trim();
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+          if(!token)throw Error('MISSING_CLOUDFLARE_API_TOKEN');
+          if(!account)throw Error('MISSING_CLOUDFLARE_ACCOUNT_ID');
+          if(!/^[a-f0-9]{32}$/i.test(account))throw Error('INVALID_ACCOUNT_ID_FORMAT');
+          const headers={Authorization:`Bearer ${token}`};
+          async function check(label,path,options={}){
+            const res=await fetch(`https://api.cloudflare.com/client/v4${path}`,{...options,headers:{...headers,...options.headers}});
+            const data=await res.json().catch(()=>null);
             const codes=(data?.errors||[]).map(e=>Number(e.code)).filter(Number.isFinite);
-            console.log('Cloudflare error codes:',JSON.stringify(codes));
-            throw Error('CLOUDFLARE_READONLY_QUERY_FAILED; verify account ID, token scope and database access');
+            console.log(`${label}: HTTP ${res.status}; success=${data?.success===true}; error_codes=${JSON.stringify(codes)}`);
+            return {ok:res.ok&&data?.success===true,data};
           }
-          const row=data.result?.[0]?.results?.[0];
-          if(!row)throw Error('UNEXPECTED_D1_RESPONSE_SHAPE');
+          const verify=await check('TOKEN_VERIFY','/user/tokens/verify');
+          if(!verify.ok)throw Error('TOKEN_INVALID_OR_REJECTED; check GitHub secret value and token status');
+          console.log('TOKEN_VERIFY_PASSED');
+          const database='221e3797-3ea2-477d-9a7f-7dfded620547';
+          const result=await check('D1_READ_ONLY',`/accounts/${account}/d1/database/${database}/query`,{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({sql:"SELECT COUNT(*) AS n, COUNT(shopify_variant_id) AS mapped, SUM(status='UNRELEASED') AS unreleased FROM seats"})
+          });
+          if(!result.ok)throw Error('TOKEN_VALID_BUT_D1_ACCESS_FAILED; verify account ID and token account scope');
+          const row=result.data.result?.[0]?.results?.[0];
+          if(!row)throw Error('UNEXPECTED_D1_RESPONSE');
           const counts={n:Number(row.n),mapped:Number(row.mapped),unreleased:Number(row.unreleased)};
           console.log('D1 counts:',JSON.stringify(counts));
           if(counts.n!==3737||counts.mapped!==0||counts.unreleased!==3737)throw Error('UNEXPECTED_SEAT_STATE; DO NOT EXECUTE MAPPING');
-          console.log('DIRECT_API_READ_ONLY_PREFLIGHT_PASSED');
+          console.log('READ_ONLY_PREFLIGHT_PASSED');
           JS
