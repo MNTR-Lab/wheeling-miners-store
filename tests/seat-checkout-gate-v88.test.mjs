@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {evaluateCheckoutReadiness,inspectCheckoutGate} from '../src/seat-checkout-gate.js';
+const base={sku:'WM-ST-105-A-01',status:'AVAILABLE',hold_id:null,shopify_order_id:null,shopify_variant_id:'gid://shopify/ProductVariant/123',price_cents:16000};
+const flags={approvedManifest:true,checkoutConfigured:true,webhookConfigured:true};
+const check=(rows,options=flags)=>evaluateCheckoutReadiness(rows,options);
+test('diagnostic pass never enables checkout, holds or sales',()=>{const r=check([base]);assert.equal(r.ready,true);assert.equal(r.sales_enabled,false);assert.equal(r.checkout_enabled,false);assert.equal(r.authorization_granted,false)});
+test('different seats cannot share a Shopify variant',()=>{const r=check([base,{...base,sku:'WM-ST-105-A-02'}]);assert.equal(r.ready,false);assert.ok(r.issues.some(x=>x.reason==='DUPLICATE_SHOPIFY_VARIANT'))});
+test('different seats with distinct variants pass diagnostics',()=>assert.equal(check([base,{...base,sku:'WM-ST-105-A-02',shopify_variant_id:'gid://shopify/ProductVariant/124'}]).ready,true));
+test('rejects unsafe sum of valid individual prices',()=>{const r=check([ {...base,price_cents:Number.MAX_SAFE_INTEGER}, {...base,sku:'WM-ST-105-A-02',shopify_variant_id:'gid://shopify/ProductVariant/124',price_cents:1}]);assert.ok(r.issues.some(x=>x.reason==='PRICE_TOTAL_OVERFLOW'));assert.equal(r.total_cents,null)});
+test('rejects empty and leading-zero Shopify variant ID',()=>{for(const id of ['', 'gid://shopify/ProductVariant/0','gid://shopify/ProductVariant/001'])assert.equal(check([{...base,shopify_variant_id:id}]).ready,false)});
+test('flags must be actual boolean true',()=>assert.equal(check([base],{approvedManifest:1,checkoutConfigured:'yes',webhookConfigured:true}).ready,false));
+test('duplicate database rows fail closed',async()=>{const db={prepare:()=>({bind:()=>({all:async()=>({results:[base,base]})})})};const r=await inspectCheckoutGate(db,[base.sku],flags);assert.equal(r.ready,false);assert.equal(r.issues[0].reason,'DUPLICATE_DATABASE_SEAT')});
+test('unexpected database rows throw',async()=>{const db={prepare:()=>({bind:()=>({all:async()=>({results:[{...base,sku:'WM-ST-105-A-99'}]})})})};await assert.rejects(inspectCheckoutGate(db,[base.sku],flags),/DATABASE_RESULT_INVALID/)});
+test('malformed database result throws',async()=>{const db={prepare:()=>({bind:()=>({all:async()=>({results:null})})})};await assert.rejects(inspectCheckoutGate(db,[base.sku],flags),/DATABASE_RESULT_INVALID/)});
