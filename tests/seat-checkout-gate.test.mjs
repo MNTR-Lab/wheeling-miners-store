@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {evaluateCheckoutReadiness,inspectCheckoutGate} from '../src/seat-checkout-gate.js';
+const row={sku:'WM-ST-105-B-06',status:'AVAILABLE',hold_id:null,shopify_order_id:null,shopify_variant_id:'gid://shopify/ProductVariant/123',price_cents:16000};
+const flags={approvedManifest:true,checkoutConfigured:true,webhookConfigured:true};
+test('valid inputs pass diagnostic gate',()=>assert.equal(evaluateCheckoutReadiness([row],flags).ready,true));
+test('defaults fail closed',()=>assert.equal(evaluateCheckoutReadiness([row]).ready,false));
+test('unreleased fails',()=>assert.equal(evaluateCheckoutReadiness([{...row,status:'UNRELEASED'}],flags).ready,false));
+test('claimed seat fails',()=>assert.equal(evaluateCheckoutReadiness([{...row,hold_id:'reservation_123456789'}],flags).ready,false));
+test('variant mapping required',()=>assert.equal(evaluateCheckoutReadiness([{...row,shopify_variant_id:null}],flags).ready,false));
+test('price required',()=>assert.equal(evaluateCheckoutReadiness([{...row,price_cents:0}],flags).ready,false));
+test('duplicate rejected',()=>assert.throws(()=>evaluateCheckoutReadiness([row,row],flags),/DUPLICATE/));
+test('max eight seats',()=>assert.throws(()=>evaluateCheckoutReadiness(Array(9).fill(row),flags),/INVALID_SEAT_SET/));
+test('missing database seat fails',async()=>{const db={prepare:()=>({bind:()=>({all:async()=>({results:[]})})})};assert.equal((await inspectCheckoutGate(db,[row.sku],flags)).issues[0].reason,'NOT_FOUND')});
+test('database seat validated',async()=>{const db={prepare:()=>({bind:()=>({all:async()=>({results:[row]})})})};assert.equal((await inspectCheckoutGate(db,[row.sku],flags)).ready,true)});
