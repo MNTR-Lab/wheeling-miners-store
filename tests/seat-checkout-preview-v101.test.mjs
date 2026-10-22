@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {handleSeatAdmin} from '../src/seat-admin.js';
+const token='z'.repeat(40),sku='WM-ST-105-B-06';
+const seat={sku,status:'AVAILABLE',hold_id:null,shopify_order_id:null,shopify_variant_id:'gid://shopify/ProductVariant/456',price_cents:16000};
+function setup(rows=[seat]){const queries=[];return {queries,env:{SEAT_ADMIN_TOKEN:token,SEAT_DB:{prepare(sql){queries.push(sql);if(!/^SELECT\s/i.test(sql))throw Error('WRITE_FORBIDDEN');return {bind(){return {all:async()=>({results:rows})}}}}}}};}
+function req(payload={skus:[sku]},auth=`Bearer ${token}`){return new Request('https://example.test/api/seats/admin/checkout-preview',{method:'POST',headers:{authorization:auth,'content-type':'application/json'},body:JSON.stringify(payload)});}
+test('eligible mapped seat still cannot checkout or hold',async()=>{const {env,queries}=setup();const res=await handleSeatAdmin(req(),env);const body=await res.json();assert.equal(res.status,200);assert.equal(body.preview_only,true);assert.equal(body.checkout_enabled,false);assert.equal(body.sales_enabled,false);assert.equal(body.preview.authorization_granted,false);assert.equal(body.preview.ready,false);assert.ok(body.preview.issues.some(x=>x.reason==='CHECKOUT_NOT_CONFIGURED'));assert.equal(body.preview.seat_count,1);assert.ok(queries.length&&queries.every(x=>/^SELECT\s/i.test(x)));});
+test('client flags cannot enable checkout',async()=>{const {env}=setup();const res=await handleSeatAdmin(req({skus:[sku],approvedManifest:true,checkoutConfigured:true,webhookConfigured:true}),env);const body=await res.json();assert.equal(body.preview.ready,false);assert.equal(body.preview.authorization_granted,false);});
+test('unauthorized requests never read inventory',async()=>{const {env,queries}=setup();const res=await handleSeatAdmin(req({skus:[sku]},'Bearer wrong'),env);assert.equal(res.status,401);assert.equal(queries.length,0);});
+test('invalid selection rejected before database read',async()=>{const {env,queries}=setup();const res=await handleSeatAdmin(req({skus:[sku,sku]}),env);assert.equal(res.status,422);assert.equal(queries.length,0);});
+test('missing seat is not ready',async()=>{const {env}=setup([]);const body=await (await handleSeatAdmin(req(),env)).json();assert.ok(body.preview.issues.some(x=>x.reason==='NOT_FOUND'));});
+test('oversized payload rejected without database reads',async()=>{const {env,queries}=setup();const res=await handleSeatAdmin(req({skus:[sku],padding:'x'.repeat(5000)}),env);assert.equal(res.status,413);assert.equal(queries.length,0);});
+test('GET cannot preview',async()=>{const {env}=setup();const res=await handleSeatAdmin(new Request('https://example.test/api/seats/admin/checkout-preview',{headers:{authorization:`Bearer ${token}`}}),env);assert.equal(res.status,405);});
