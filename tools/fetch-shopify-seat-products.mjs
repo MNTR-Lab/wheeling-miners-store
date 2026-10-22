@@ -1,12 +1,11 @@
-/** V56: read-only, paginated Shopify Admin GraphQL export for seat audits.
- * Requires SHOPIFY_ADMIN_TOKEN and SHOPIFY_SHOP_DOMAIN in the calling environment.
- * Does not mutate products, inventory, or tickets.
+/** V77 full replacement: paginated, read-only Shopify season product export.
+ * Includes option IDs and values required for guarded option conversion.
  */
 import {writeFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
-const PRODUCT_QUERY=`query SeatAuditProducts($after:String){products(first:50,after:$after,query:"sku:WM-ST-SEC-* OR sku:WM-ST-1* OR sku:WM-ST-2* OR sku:WM-ST-3*"){pageInfo{hasNextPage endCursor}nodes{id status options{name} variants(first:250){pageInfo{hasNextPage endCursor}nodes{id sku price inventoryQuantity inventoryPolicy}}}}}`;
+const PRODUCT_QUERY=`query SeatAuditProducts($after:String){products(first:50,after:$after,query:"tag:\\"Wheeling Miners\\" AND product_type:\\"Season Tickets\\""){pageInfo{hasNextPage endCursor}nodes{id title status options{id name values} variants(first:250){pageInfo{hasNextPage endCursor}nodes{id sku price inventoryQuantity inventoryPolicy}}}}}`;
 const VARIANT_QUERY=`query SeatAuditVariants($id:ID!,$after:String){product(id:$id){id variants(first:250,after:$after){pageInfo{hasNextPage endCursor}nodes{id sku price inventoryQuantity inventoryPolicy}}}}`;
-export function validateDomain(domain){if(!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(domain||''))throw Error('Expected a *.myshopify.com domain');return domain.toLowerCase();}
+export function validateDomain(domain){if(!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(domain||''))throw Error('Expected *.myshopify.com domain');return domain.toLowerCase();}
 export async function exportSeatProducts({domain,token,fetchImpl=globalThis.fetch,apiVersion='2026-10'}={}){
  domain=validateDomain(domain);if(!token||typeof token!=='string')throw Error('Missing SHOPIFY_ADMIN_TOKEN');
  if(!/^20\d\d-(01|04|07|10)$/.test(apiVersion))throw Error('Invalid Shopify API version');
@@ -17,9 +16,9 @@ export async function exportSeatProducts({domain,token,fetchImpl=globalThis.fetc
   const data=await query(PRODUCT_QUERY,{after});const connection=data.products;if(!connection?.nodes||!connection.pageInfo)throw Error('Malformed product page');
   for(const p of connection.nodes){if(seenProducts.has(p.id))throw Error('Duplicate Shopify product '+p.id);seenProducts.add(p.id);
    if(!p.variants?.nodes||!p.variants.pageInfo)throw Error('Malformed variant page for '+p.id);
-   const variants=[...p.variants.nodes],seenVariants=new Set(variants.map(v=>v.id));let vAfter=p.variants.pageInfo.endCursor;
-   while(p.variants.pageInfo.hasNextPage){if(!vAfter)throw Error('Missing variant cursor for '+p.id);const next=await query(VARIANT_QUERY,{id:p.id,after:vAfter});const conn=next.product?.variants;if(!conn?.nodes||!conn.pageInfo)throw Error('Malformed variant continuation for '+p.id);for(const v of conn.nodes){if(seenVariants.has(v.id))throw Error('Duplicate variant '+v.id);seenVariants.add(v.id);variants.push(v);}p.variants.pageInfo=conn.pageInfo;vAfter=conn.pageInfo.endCursor;}
-   products.push({id:p.id,status:p.status,options:p.options,variants:{nodes:variants,pageInfo:{hasNextPage:false,endCursor:vAfter}}});
+   const variants=[...p.variants.nodes],seenVariants=new Set(variants.map(v=>v.id));let vAfter=p.variants.pageInfo.endCursor;let hasMore=p.variants.pageInfo.hasNextPage;
+   while(hasMore){if(!vAfter)throw Error('Missing variant cursor for '+p.id);const next=await query(VARIANT_QUERY,{id:p.id,after:vAfter});const conn=next.product?.variants;if(!conn?.nodes||!conn.pageInfo)throw Error('Malformed variant continuation for '+p.id);for(const v of conn.nodes){if(seenVariants.has(v.id))throw Error('Duplicate variant '+v.id);seenVariants.add(v.id);variants.push(v);}hasMore=conn.pageInfo.hasNextPage;vAfter=conn.pageInfo.endCursor;}
+   products.push({id:p.id,title:p.title,status:p.status,options:p.options,variants:{nodes:variants,pageInfo:{hasNextPage:false,endCursor:vAfter}}});
   }
   if(!connection.pageInfo.hasNextPage)break;
   after=connection.pageInfo.endCursor;if(!after||seenPages.has(after))throw Error('Missing/repeated product pagination cursor');seenPages.add(after);
