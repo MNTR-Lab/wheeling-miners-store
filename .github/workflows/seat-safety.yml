@@ -1,0 +1,33 @@
+name: Wheeling Miners seat safety tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seat-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Python and SQLite
+        run: |
+          python3 --version
+          python3 -c "import sqlite3; print('SQLite', sqlite3.sqlite_version)"
+      - name: Check JavaScript syntax
+        run: |
+          find src tools tests -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -r -n1 node --check
+      - name: Run all Node tests, including full 3,737-seat simulation
+        run: node --test tests/*.test.mjs
+      - name: Enforce staging safety
+        run: node --test tests/staging-safety.test.mjs
