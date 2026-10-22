@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {inspectSeatSchema,sqlInspectionCommands} from '../tools/verify-seat-transaction-schema.mjs';
+const schema={seats:['sku','status','hold_id','hold_expires_at','shopify_order_id','shopify_variant_id','price_cents'],reservations:['id','status','checkout_nonce','expires_at','shopify_order_id'],reservation_seats:['reservation_id','seat_sku','shopify_variant_id'],seat_admin_guard:['id','valid'],seat_admin_guard_sql:'CREATE TABLE seat_admin_guard (id INTEGER,valid INTEGER CHECK(valid=1))'};
+test('complete compatible schema passes offline preflight',()=>assert.equal(inspectSeatSchema(schema).ready,true));
+test('missing reservation nonce blocks',()=>{const s=structuredClone(schema);s.reservations=s.reservations.filter(x=>x!=='checkout_nonce');assert.ok(inspectSeatSchema(s).issues.some(x=>x.column==='checkout_nonce'));});
+test('missing reservation table blocks',()=>{const s=structuredClone(schema);delete s.reservations;assert.equal(inspectSeatSchema(s).ready,false);});
+test('guard must be verified',()=>{const s=structuredClone(schema);delete s.seat_admin_guard_sql;assert.ok(inspectSeatSchema(s).issues.some(x=>x.reason==='ROLLBACK_GUARD_NOT_VERIFIED'));});
+test('legacy integer reservation expiry blocks',()=>{const s=structuredClone(schema);s.reservations=s.reservations.map(x=>x==='expires_at'?{name:x,type:'INTEGER'}:x);assert.ok(inspectSeatSchema(s).issues.some(x=>x.reason==='LEGACY_INTEGER_EXPIRY_INCOMPATIBLE'));});
+test('legacy integer seat hold expiry blocks',()=>{const s=structuredClone(schema);s.seats=s.seats.map(x=>x==='hold_expires_at'?{name:x,type:'INTEGER'}:x);assert.equal(inspectSeatSchema(s).ready,false);});
+test('read-only inspection commands never mutate data',()=>assert.ok(sqlInspectionCommands().every(x=>/^(SELECT|PRAGMA)/.test(x))));
+test('rejects malformed input',()=>assert.throws(()=>inspectSeatSchema(null),/INVALID_SCHEMA/));
