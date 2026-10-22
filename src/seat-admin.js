@@ -1,6 +1,7 @@
-/** V69: authenticated seat administration and read-only season-ticket planning. */
+/** V70: authenticated seat admin, mapping preflight, season plan and variant manifest. */
 import {mappingReport} from './seat-mapping-report.js';
 import {seasonTicketPlan} from './season-ticket-plan.js';
+import {seatVariantManifest} from './seat-variant-manifest.js';
 const HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
 const reply=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const SKU=/^WM-ST-\d{3}-[A-Z][A-Z0-9]{0,3}-\d{2,3}$/;
@@ -20,6 +21,7 @@ export async function handleSeatAdmin(request,env){
  if(!authorized(request,env))return reply({error:'Unauthorized'},401);
  if(path==='/api/seats/admin/mapping-report')return mappingReport(request,env);
  if(path==='/api/seats/admin/season-plan')return seasonTicketPlan(request,env);
+ if(path==='/api/seats/admin/variant-manifest')return seatVariantManifest(request,env);
  if(path==='/api/seats/admin/summary'&&request.method==='GET'){
   const result=await env.SEAT_DB.prepare('SELECT section,status,COUNT(*) AS count FROM seats GROUP BY section,status ORDER BY section,status').all();
   return reply({mode:'ADMIN_STAGING',sales_enabled:false,sections:result.results});
@@ -30,15 +32,12 @@ export async function handleSeatAdmin(request,env){
  if(typeof sku!=='string'||!SKU.test(sku)||!['BLOCK','UNBLOCK'].includes(action)||typeof reason!=='string'||reason.trim().length<5||reason.length>500||typeof operator!=='string'||operator.trim().length<2||operator.length>120)return reply({error:'Invalid change request'},400);
  const target=action==='BLOCK'?'BLOCKED':'UNRELEASED';
  const allowed=action==='BLOCK'?"status IN ('UNRELEASED','AVAILABLE')":"status='BLOCKED'";
- const eligible=allowed;
  const statements=[
   env.SEAT_DB.prepare('DELETE FROM seat_admin_guard WHERE id=1'),
-  env.SEAT_DB.prepare(`INSERT INTO seat_admin_audit (seat_sku,action,previous_status,new_status,operator,reason) SELECT sku,?,status,?,?,? FROM seats WHERE sku=? AND ${eligible} AND hold_id IS NULL AND shopify_order_id IS NULL`).bind(action,target,operator.trim(),reason.trim(),sku),
+  env.SEAT_DB.prepare(`INSERT INTO seat_admin_audit (seat_sku,action,previous_status,new_status,operator,reason) SELECT sku,?,status,?,?,? FROM seats WHERE sku=? AND ${allowed} AND hold_id IS NULL AND shopify_order_id IS NULL`).bind(action,target,operator.trim(),reason.trim(),sku),
   env.SEAT_DB.prepare(`UPDATE seats SET status=?,updated_at=CURRENT_TIMESTAMP WHERE sku=? AND ${allowed} AND hold_id IS NULL AND shopify_order_id IS NULL`).bind(target,sku),
   env.SEAT_DB.prepare('INSERT INTO seat_admin_guard (id,valid) VALUES (1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)')
  ];
- try{
-  await env.SEAT_DB.batch(statements);
-  return reply({ok:true,sku,action,status:target,mode:'ADMIN_STAGING',sales_enabled:false});
- }catch(e){return reply({error:'Seat unavailable or change could not be committed',code:'CHANGE_REJECTED'},409);}
+ try{await env.SEAT_DB.batch(statements);return reply({ok:true,sku,action,status:target,mode:'ADMIN_STAGING',sales_enabled:false});}
+ catch(e){return reply({error:'Seat unavailable or change could not be committed',code:'CHANGE_REJECTED'},409);}
 }
