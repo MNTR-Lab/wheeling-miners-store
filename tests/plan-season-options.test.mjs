@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {planSeasonOptions} from '../tools/plan-season-options.mjs';
+const sample=()=>[{id:'gid://shopify/Product/1',status:'DRAFT',options:[{name:'Title'}],variants:{nodes:[{id:'gid://shopify/ProductVariant/2',sku:'WM-ST-SEC-105',inventoryQuantity:0}],pageInfo:{hasNextPage:false}}}];
+test('identifies safe placeholder needing option conversion',()=>{const r=planSeasonOptions(sample(),{expectedSections:1});assert.equal(r.option_conversion_needed,1);assert.equal(r.shopify_writes,0);assert.equal(r.sales_enabled,false);});
+test('recognizes Row and Seat options already ready',()=>{const x=sample();x[0].options=[{name:'Row'},{name:'Seat'}];assert.equal(planSeasonOptions(x,{expectedSections:1}).options_ready,1);});
+test('blocks non-draft products',()=>{const x=sample();x[0].status='ACTIVE';assert.equal(planSeasonOptions(x,{expectedSections:1}).blocked,1);});
+test('blocks placeholder inventory',()=>{const x=sample();x[0].variants.nodes[0].inventoryQuantity=1;assert.equal(planSeasonOptions(x,{expectedSections:1}).blocked,1);});
+test('rejects incomplete pagination',()=>{const x={nodes:sample(),pageInfo:{hasNextPage:true}};assert.throws(()=>planSeasonOptions(x,{expectedSections:1}),/Incomplete/);});
+test('rejects duplicate section products',()=>{const x=sample();x.push({...x[0],id:'gid://shopify/Product/3'});assert.match(planSeasonOptions(x,{expectedSections:1}).errors.join(','),/Duplicate/);});
