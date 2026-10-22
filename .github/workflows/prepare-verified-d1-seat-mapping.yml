@@ -1,0 +1,58 @@
+name: Prepare verified D1 seat mapping (offline only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Download previously verified Shopify mapping
+        uses: actions/download-artifact@v4
+        with:
+          name: wheeling-full-shopify-seat-mapping-39865871275
+          run-id: 39865871275
+          github-token: ${{ github.token }}
+          path: verified-shopify-export
+      - name: Verify original Shopify reconciliation report
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import {readFileSync} from 'node:fs';
+          const p=JSON.parse(readFileSync('verified-shopify-export/verification-report.json','utf8'));
+          for(const [key,val] of Object.entries({status:'VERIFIED',mode:'READ_ONLY',shopify_seats:3737,sections:63,distinct_variant_ids:3737,source_d1_seats:3737,source_approved_seats:3737,sales_enabled:false,d1_updated:false})){
+            if(p[key]!==val)throw Error(`Unexpected verified report field ${key}: ${p[key]}`);
+          }
+          console.log('Verified Shopify reconciliation report matches all safety constraints');
+          JS
+      - name: Build offline D1 mapping SQL (NO database writes)
+        run: |
+          mkdir -p d1-mapping-output
+          node tools/build-d1-seat-mapping.mjs data/staging/d1-seats.csv verified-shopify-export/verified-shopify-variants.csv d1-mapping-output/verified-seat-mapping.sql
+      - name: Verify SQL contains only guarded mapping changes
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const sql=readFileSync('d1-mapping-output/verified-seat-mapping.sql','utf8');
+          const updates=sql.match(/^UPDATE seats SET shopify_variant_id=/gm)||[];
+          if(updates.length!==3737)throw Error(`Expected 3737 seat updates, got ${updates.length}`);
+          if(!sql.includes('BEGIN TRANSACTION;')||!sql.includes('COMMIT;'))throw Error('Transaction guards missing');
+          if(/\b(AVAILABLE|SOLD|HELD|CHECKOUT_PENDING|PUBLISH|inventory_quantity\s*=)\b/i.test(sql))throw Error('Unsafe SQL content');
+          const report={mode:'OFFLINE_SQL_ONLY',updates:updates.length,shopify_reconciliation_run:39865871275,d1_modified:false,shopify_modified:false,sales_enabled:false,requires_database_backup:true,requires_schema_review:true};
+          writeFileSync('d1-mapping-output/preparation-report.json',JSON.stringify(report,null,2));
+          console.log('OFFLINE_3737_D1_MAPPING_SQL_PREPARED; no database modified');
+          JS
+      - name: Save prepared SQL and report
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheeling-offline-d1-mapping-${{ github.run_id }}
+          path: d1-mapping-output/
+          if-no-files-found: error
+          retention-days: 30
