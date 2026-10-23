@@ -1,4 +1,4 @@
-/** V101: authenticated staging administration, payment and checkout previews. */
+/** Authenticated staging administration and controlled test-cart endpoint. */
 import {seatCatalogAudit} from './seat-catalog-audit.js';
 import {mappingReport} from './seat-mapping-report.js';
 import {seasonTicketPlan} from './season-ticket-plan.js';
@@ -6,6 +6,7 @@ import {seatVariantManifest} from './seat-variant-manifest.js';
 import {handlePaymentAudit} from './seat-payment-audit.js';
 import {handleOwnershipPreview} from './seat-ownership-preview.js';
 import {handleCheckoutPreview} from './seat-checkout-preview.js';
+import {handleAdminControlledCart} from './seat-admin-controlled-cart.js';
 const HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
 const reply=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const SKU=/^WM-ST-\d{3}-[A-Z][A-Z0-9]{0,3}-\d{2,3}$/;
@@ -23,6 +24,7 @@ export async function handleSeatAdmin(request,env){
  if(!path.startsWith('/api/seats/admin/'))return null;
  if(!env.SEAT_DB)return reply({error:'Seat database unavailable'},503);
  if(!authorized(request,env))return reply({error:'Unauthorized'},401);
+ if(path==='/api/seats/admin/controlled-cart')return handleAdminControlledCart(request,env);
  if(path==='/api/seats/admin/checkout-preview')return handleCheckoutPreview(request,env);
  if(path==='/api/seats/admin/ownership-preview')return handleOwnershipPreview(request,env);
  if(path==='/api/seats/admin/payment-audit')return handlePaymentAudit(request,env);
