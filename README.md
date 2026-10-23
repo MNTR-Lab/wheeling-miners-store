@@ -1,1 +1,1 @@
-V117 staging-only checkout payload expiry fix. Replace src/seat-shopify-checkout-payload.js and add tests/seat-shopify-checkout-payload-v117.test.mjs. No release, checkout activation, or database writes. Run full GitHub Actions safety suite after commit.
+V118: add tests/seat-paid-webhook-integration-v118.test.mjs. Isolated signed webhook tests with fake D1; no production mutation or checkout activation. Requires existing src/ modules. Commit and inspect GitHub Actions full suite.
