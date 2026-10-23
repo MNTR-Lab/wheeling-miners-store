@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {handleSeatAdmin} from '../src/seat-admin.js';
+const token='a'.repeat(40);
+const url='https://example.com/api/seats/admin/controlled-cart';
+const request=(body,authorization=`Bearer ${token}`,method='POST')=>new Request(url,{method,headers:{authorization,'content-type':'application/json'},...(method==='POST'?{body:JSON.stringify(body)}:{})});
+const db={prepare(){throw Error('DB_SHOULD_NOT_BE_CALLED')}};
+test('unauthenticated caller denied',async()=>{const r=await handleSeatAdmin(request({reservationId:'reservation_123456789012'},'Bearer bad'),{SEAT_DB:db,SEAT_ADMIN_TOKEN:token});assert.equal(r.status,401)});
+test('cart disabled by default without database access',async()=>{const r=await handleSeatAdmin(request({reservationId:'reservation_123456789012'}),{SEAT_DB:db,SEAT_ADMIN_TOKEN:token});assert.equal(r.status,423);assert.equal((await r.json()).error,'CONTROLLED_CART_DISABLED')});
+test('rejects invalid reservation identifier before DB lookup',async()=>{const r=await handleSeatAdmin(request({reservationId:'bad'}),{SEAT_DB:db,SEAT_ADMIN_TOKEN:token,SEAT_CONTROLLED_CART_ENABLED:'true'});assert.equal(r.status,422)});
+test('GET cannot initiate cart',async()=>{const r=await handleSeatAdmin(request(null,`Bearer ${token}`,'GET'),{SEAT_DB:db,SEAT_ADMIN_TOKEN:token,SEAT_CONTROLLED_CART_ENABLED:'true'});assert.equal(r.status,405)});
