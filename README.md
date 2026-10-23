@@ -1,1 +1,1 @@
-V123: Add tests/seat-multi-paid-webhook-v123.test.mjs. Six mocked two-seat signed webhook tests for guarded atomic payment fulfillment. No production DB or Shopify calls. Run GitHub Actions after commit.
+V124 read-only launch inventory preflight. Add src/seat-launch-preflight.js and tests/seat-launch-preflight-v124.test.mjs. Structural checks are NOT sales authorization. No checkout enablement or mutations. Tests require GitHub Actions verification.
