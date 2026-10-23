@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {assessControlledLaunch} from '../src/seat-controlled-launch-assessment.js';
+const inventory={mode:'READ_ONLY_PREFLIGHT',issues:[],checksPassed:true,salesEnabled:false,checkoutEnabled:false,databaseMutations:0,shopifyMutations:0};
+const checkout={mode:'READ_ONLY_CHECKOUT_HANDOFF',checkoutEnabled:false,salesEnabled:false,databaseMutations:0,shopifyMutations:0,ownershipVerified:true,variantMappingVerified:true,seatCount:2};
+const operations={venue_manifest_signed_off:true,checkout_end_to_end_passed:true,payment_webhook_reconciled:true,oversell_prevention_verified:true,refund_cancellation_tested:true};
+const run=(i=inventory,c=checkout,o=operations)=>assessControlledLaunch({inventory:i,checkout:c,operations:o});
+test('even all green technical checks do not authorize sales',()=>{
+ const r=run();assert.equal(r.technicalChecksComplete,true);assert.equal(r.readyForPublicSales,false);
+ assert.equal(r.authorizationGranted,false);assert.equal(r.checkoutEnabled,false);
+ assert.equal(r.nextAction,'REQUEST_SEPARATE_EXPLICIT_LAUNCH_APPROVAL');
+});
+test('missing live checkout test blocks completion',()=>assert.ok(run(inventory,checkout,{...operations,checkout_end_to_end_passed:false}).blockers.includes('LIVE_CHECKOUT_NOT_TESTED')));
+test('missing paid webhook reconciliation blocks completion',()=>assert.ok(run(inventory,checkout,{...operations,payment_webhook_reconciled:false}).blockers.includes('PAID_WEBHOOK_NOT_RECONCILED')));
+test('missing refund test blocks completion',()=>assert.ok(run(inventory,checkout,{...operations,refund_cancellation_tested:false}).blockers.includes('REFUND_CANCELLATION_NOT_TESTED')));
+test('missing venue approval evidence blocks completion',()=>assert.ok(run(inventory,checkout,{...operations,venue_manifest_signed_off:false}).blockers.includes('VENUE_APPROVAL_EVIDENCE_MISSING')));
+test('dirty inventory blocks completion',()=>assert.ok(run({...inventory,checksPassed:false,issues:['UNMAPPED_SEATS']}).blockers.includes('INVENTORY_PREFLIGHT_NOT_CLEAN')));
+test('invalid checkout report fails closed',()=>assert.throws(()=>run(inventory,{...checkout,checkoutEnabled:true}),/INVALID_CHECKOUT_REPORT/));
+test('unverified checkout handoff blocks completion',()=>assert.ok(run(inventory,{...checkout,ownershipVerified:false}).blockers.includes('CHECKOUT_HANDOFF_NOT_VERIFIED')));
+test('missing reports fail closed',()=>assert.throws(()=>assessControlledLaunch({}),/INVALID_INVENTORY_REPORT/));
+test('assessment never mutates inputs',()=>{const a=structuredClone(inventory),b=structuredClone(checkout),c=structuredClone(operations);run();assert.deepEqual(inventory,a);assert.deepEqual(checkout,b);assert.deepEqual(operations,c)});
