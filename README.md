@@ -1,1 +1,1 @@
-V121 deployed Worker routing contract regression. Add tests/seat-worker-routing-v121.test.mjs. Verifies guarded webhook handler and locked public routes. No source changes or production writes. Commit and run GitHub Actions.
+V122: add src/seat-refund-preview.js and tests/seat-refund-preview-v122.test.mjs. Offline-only refund and cancellation review planner. It NEVER refunds, releases, or restores a sold seat. Manual approval and production implementation remain required.
