@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {prepareFulfillment,executeFulfillment} from '../src/seat-fulfillment-transaction.js';
 const order={id:123,line_items:[{sku:'WM-ST-105-B-06',variant_id:456,quantity:1}]};
 const reservation={id:'reservation_123456789',status:'CHECKOUT_PENDING',shopify_order_id:'123'};
-const row={sku:'WM-ST-105-B-06',shopify_variant_id:'gid://shopify/ProductVariant/456',status:'HELD',shopify_order_id:null,hold_id:reservation.id,hold_expires_at:'2026-10-22T15:00:00.000Z'};
+const row={sku:'WM-ST-105-B-06',shopify_variant_id:'gid://shopify/ProductVariant/456',status:'HELD',shopify_order_id:null,hold_id:reservation.id,hold_expires_at:Date.parse('2099-10-22T15:00:00.000Z')};
 test('plans valid fulfillment without writing',()=>{const p=prepareFulfillment(order,reservation,[row]);assert.equal(p.operations.length,1);assert.equal(p.replayed,false)});
 test('rejects different Shopify order',()=>assert.throws(()=>prepareFulfillment(order,{...reservation,shopify_order_id:'999'},[row]),/OWNERSHIP/));
 test('rejects foreign hold',()=>assert.throws(()=>prepareFulfillment(order,reservation,[{...row,hold_id:'other_reservation_123456'}]),/HOLD_OWNERSHIP/));
@@ -11,7 +11,7 @@ test('rejects unmapped seat',()=>assert.throws(()=>prepareFulfillment(order,rese
 test('rejects unheld seat',()=>assert.throws(()=>prepareFulfillment(order,reservation,[{...row,status:'AVAILABLE'}]),/RECONCILIATION/));
 test('rejects partial data',()=>assert.throws(()=>prepareFulfillment(order,reservation,[]),/INCOMPLETE/));
 test('rejects invalid reservation state',()=>assert.throws(()=>prepareFulfillment(order,{...reservation,status:'CANCELLED'},[row]),/STATE/));
-test('idempotent replay',()=>{const p=prepareFulfillment(order,{...reservation,status:'PAID'},[{...row,status:'SOLD',shopify_order_id:'123'}]);assert.equal(p.replayed,true)});
+test('idempotent replay requires CONFIRMED reservation',()=>{const p=prepareFulfillment(order,{...reservation,status:'CONFIRMED'},[{...row,status:'SOLD',shopify_order_id:'123'}]);assert.equal(p.replayed,true)});
 test('execution requires independently verified ownership',async()=>await assert.rejects(executeFulfillment({},prepareFulfillment(order,reservation,[row])),/OWNERSHIP_NOT_VERIFIED/));
 test('execution rejects tampered SQL',async()=>await assert.rejects(executeFulfillment({prepare:()=>({bind(){return this}}),batch:async()=>{}},{operations:[{sql:'DELETE FROM seats',params:[1,2,3,4]}]},{confirmedOwnership:true}),/UNTRUSTED_SQL/));
 test('execution uses guarded atomic batch',async()=>{const calls=[];const db={prepare(sql){return {bind(...params){calls.push({sql,params});return this},sql}},async batch(items){assert.equal(items.length,4);calls.push({batch:items.length})}};const result=await executeFulfillment(db,prepareFulfillment(order,reservation,[row]),{confirmedOwnership:true});assert.equal(result.seatCount,1);assert.equal(calls.at(-1).batch,4)});
