@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wheeling-miners-store-test",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-22",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/seats/*", "/seat-selector", "/seat-selector.html"]
+  },
+  "vars": {
+    "SEAT_CONTROLLED_CART_ENABLED": "false",
+    "SEAT_SHOPIFY_AUTH_PROBE_ENABLED": "false",
+    "WM_ENVIRONMENT": "TEST"
+  },
+  "d1_databases": [
+    {
+      "binding": "SEAT_DB",
+      "database_name": "wheeling-miners-seats-test",
+      "database_id": "2a06b7a7-e833-4a01-8667-2f6388dc0ee0"
+    }
+  ]
+}
