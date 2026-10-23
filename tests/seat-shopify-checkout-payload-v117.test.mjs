@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {buildShopifySeatCheckout} from '../src/seat-shopify-checkout-payload.js';
+const rid='reservation_123456789',nonce='nonce_1234567890123456789012',ms=Date.parse('2099-01-01T00:00:00Z');
+const reservation={id:rid,checkout_nonce:nonce,status:'HELD',expires_at:ms,shopify_order_id:null};
+const seats=[{seat_sku:'WM-ST-105-B-06',shopify_variant_id:'gid://shopify/ProductVariant/456'},{seat_sku:'WM-ST-105-B-07',shopify_variant_id:'gid://shopify/ProductVariant/457'}];
+const make=(r=reservation,s=seats)=>buildShopifySeatCheckout(r,s);
+test('accepts production integer expiry',()=>assert.equal(make().expiresAt,ms));
+test('legacy ISO fixture normalizes to integer',()=>assert.equal(make({...reservation,expires_at:new Date(ms).toISOString()}).expiresAt,ms));
+test('checkout attributes and two exact mapped variants',()=>{const p=make();assert.deepEqual(p.lines.map(x=>x.variantId),['456','457']);assert.deepEqual(p.lines.map(x=>x.quantity),[1,1]);assert.equal(p.noteAttributes[0].value,rid);assert.equal(p.noteAttributes[1].value,nonce);assert.equal(p.checkoutEnabled,false)});
+test('expired integer rejected',()=>assert.throws(()=>make({...reservation,expires_at:Date.parse('2020-01-01T00:00:00Z')}),/RESERVATION_EXPIRED/));
+test('malformed integer rejected',()=>assert.throws(()=>make({...reservation,expires_at:42}),/INVALID_RESERVATION_EXPIRY/));
+test('duplicate seat rejected',()=>assert.throws(()=>make(reservation,[seats[0],seats[0]]),/DUPLICATE_SEAT_SKU/));
+test('duplicate variant rejected',()=>assert.throws(()=>make(reservation,[seats[0],{...seats[1],shopify_variant_id:seats[0].shopify_variant_id}]),/DUPLICATE_SHOPIFY_VARIANT/));
+test('confirmed reservation rejected',()=>assert.throws(()=>make({...reservation,status:'CONFIRMED'}),/INVALID_RESERVATION_STATUS/));
+test('ordered reservation rejected',()=>assert.throws(()=>make({...reservation,shopify_order_id:'123'}),/RESERVATION_ALREADY_ORDERED/));
+test('unreleased is not a checkout switch',()=>assert.equal(make().mode,'STAGING_PAYLOAD_ONLY'));
