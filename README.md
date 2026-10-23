@@ -1,1 +1,1 @@
-V119 read-only expiration eligibility audit. Add src/seat-expiry-audit.js and tests/seat-expiry-audit-v119.test.mjs. This does NOT execute cleanup, change production D1, or enable sales. Requires existing src/seat-expiry.js. Run GitHub Actions after commit.
+V120 offline end-to-end reservation-to-checkout rehearsal. Add src/seat-checkout-rehearsal.js and tests/seat-checkout-rehearsal-v120.test.mjs. Uses existing source modules. No network, D1 writes, Shopify writes, or checkout activation. Full GitHub Actions run required.
