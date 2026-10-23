@@ -1,11 +1,10 @@
-Wheeling Miners test database schema setup
+Wheeling Miners — isolated test Worker deployment
 
-Upload .github/workflows/wheeling-test-schema-deploy.yml into the SAME PATH in GitHub and commit.
+Commit .github/workflows/wheeling-test-worker-deploy.yml into the same path in the repository.
+Then GitHub > Actions > Wheeling TEST Worker deployment > Run workflow.
 
-Then GitHub > Actions > Wheeling TEST D1 schema setup > Run workflow > Run workflow.
+The workflow checks that the test schema exists BEFORE deploying. If the schema setup was not run, it stops safely.
+The test Worker is separate from production, uses the test D1 database, and keeps checkout disabled.
+No Shopify secrets are added and no test payment is attempted.
 
-The workflow explicitly checks the test Worker configuration and targets the test D1 database ID 2a06b7a7-e833-4a01-8667-2f6388dc0ee0. It does not deploy production or publish Shopify products.
-
-Only run it after confirming CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID GitHub secrets are set. The workflow uses the account ID already present in the repository's read-only diagnostic.
-
-Expected: successful schema creation, five named tables, and test_seats = 0.
+If GitHub Actions reports a missing Cloudflare token or D1 schema, do not run production deployment workflows to fix it.
