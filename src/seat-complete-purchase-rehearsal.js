@@ -7,10 +7,14 @@ import {preparePaidCommit} from './seat-paid-commit.js';
 const fail=code=>{throw Error(code)};
 export function rehearseCompleteSeatPurchase(skus,availableRows,{reservationId,checkoutNonce,expiresAt,orderId='123456789',now=new Date()}={}){
  if(!/^[1-9]\d*$/.test(String(orderId)))fail('INVALID_TEST_ORDER');
- const planned=rehearseSeatCheckout(skus,availableRows,{reservationId,checkoutNonce,expiresAt,now});
+ if(!Array.isArray(skus)||!Array.isArray(availableRows))fail('INVALID_SELECTION');
+ const selected=new Set(skus);
+ const selectedRows=availableRows.filter(row=>selected.has(row?.sku));
+ if(selectedRows.length!==selected.size)fail('INCOMPLETE_SEAT_SET');
+ const planned=rehearseSeatCheckout(skus,selectedRows,{reservationId,checkoutNonce,expiresAt,now});
  const {checkout,reservationPlan}=planned;
  const reservation={id:reservationId,status:'CHECKOUT_PENDING',checkout_nonce:checkoutNonce,expires_at:checkout.expiresAt,shopify_order_id:null};
- const linked=checkout.lines.map(line=>({seat_sku:line.sku,shopify_variant_id:line.merchandiseId}));
+ const linked=checkout.lines.map(line=>({sku:line.sku,shopify_variant_id:line.merchandiseId}));
  const held=checkout.lines.map(line=>({sku:line.sku,status:'HELD',hold_id:reservationId,hold_expires_at:checkout.expiresAt,shopify_order_id:null,shopify_variant_id:line.merchandiseId}));
  const order={id:Number(orderId),line_items:checkout.lines.map((line,i)=>({id:i+1,sku:line.sku,variant_id:Number(line.variantId),quantity:1})),note_attributes:checkout.noteAttributes};
  if(!Number.isSafeInteger(order.id)||order.line_items.some(x=>!Number.isSafeInteger(x.variant_id)))fail('INVALID_TEST_ORDER');
