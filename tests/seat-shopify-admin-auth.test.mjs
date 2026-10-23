@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {verifyShopifyAdminConnection,handleShopifyAdminConnection} from '../src/seat-shopify-admin-auth.js';
+const env={SHOPIFY_STORE_DOMAIN:'186815-4c.myshopify.com',SHOPIFY_CLIENT_ID:'abc',SHOPIFY_CLIENT_SECRET:'secret',SEAT_SHOPIFY_AUTH_PROBE_ENABLED:'true'};
+const response=(data,ok=true)=>({ok,json:async()=>data});
+const mock=async(url,opts)=>url.endsWith('/access_token')?response({access_token:'valid_token_123',scope:'read_products,read_orders,read_inventory',expires_in:86399}):response({data:{shop:{name:'GOAT Sports Inc',myshopifyDomain:env.SHOPIFY_STORE_DOMAIN}}});
+test('read-only auth connection succeeds and verifies shop',async()=>{const r=await verifyShopifyAdminConnection(env,{fetchImpl:mock});assert.equal(r.connected,true);assert.equal(r.checkoutEnabled,false)});
+test('disabled probe never requests Shopify',async()=>{let calls=0;const r=await handleShopifyAdminConnection(new Request('https://example.com',{method:'GET'}),{...env,SEAT_SHOPIFY_AUTH_PROBE_ENABLED:'false'},{fetchImpl:()=>{calls++}});assert.equal(r.status,423);assert.equal(calls,0)});
+test('rejects missing scopes',async()=>await assert.rejects(verifyShopifyAdminConnection(env,{fetchImpl:async(url)=>url.endsWith('/access_token')?response({access_token:'valid_token_123',scope:'read_orders'}):mock(url)}),/SHOPIFY_READ_PRODUCTS_SCOPE_MISSING/));
+test('rejects wrong shop',async()=>await assert.rejects(verifyShopifyAdminConnection(env,{fetchImpl:async(url)=>url.endsWith('/access_token')?mock(url):response({data:{shop:{name:'other',myshopifyDomain:'other.myshopify.com'}}})}),/SHOPIFY_ADMIN_SHOP_MISMATCH/));
+test('does not disclose token in output',async()=>{const r=await handleShopifyAdminConnection(new Request('https://example.com'),env,{fetchImpl:mock});assert.equal(r.status,200);assert.equal(JSON.stringify(await r.json()).includes('valid_token_123'),false)});
