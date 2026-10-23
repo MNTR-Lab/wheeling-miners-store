@@ -1,1 +1,1 @@
-V116 regression test alignment only. Replace all three files in tests/. No source, database, or Shopify changes. Run GitHub Actions seat safety tests and verify 524/524 pass. Do not release seats or enable checkout.
+V117 staging-only checkout payload expiry fix. Replace src/seat-shopify-checkout-payload.js and add tests/seat-shopify-checkout-payload-v117.test.mjs. No release, checkout activation, or database writes. Run full GitHub Actions safety suite after commit.
