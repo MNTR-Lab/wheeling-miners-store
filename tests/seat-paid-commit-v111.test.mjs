@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {executePaidCommit} from '../src/seat-paid-commit.js';
+const UPDATE="UPDATE seats SET status='SOLD',shopify_order_id=?,hold_id=NULL,hold_expires_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE sku=? AND status='HELD' AND hold_id=? AND shopify_order_id IS NULL AND shopify_variant_id=?";
+const plan=()=>({orderId:'123',reservationId:'reservation_123456789',seatCount:1,replayed:false,operations:[{sql:UPDATE,params:['123','WM-ST-105-B-06','reservation_123456789','gid://shopify/ProductVariant/456'],expectedChanges:1}]});
+const fake=()=>{const sql=[];return {sql,prepare(s){sql.push(s);return {bind(){return this}}},async batch(s){this.stmts=s;return []}}};
+test('production enum uses CONFIRMED, never PAID',async()=>{const d=fake();await executePaidCommit(d,plan(),{signatureVerified:true});assert.ok(d.sql.some(x=>x.includes("status='CONFIRMED'")));assert.ok(!d.sql.some(x=>x.includes("status='PAID'")))});
+test('signature required before preparing SQL',async()=>{const d=fake();await assert.rejects(executePaidCommit(d,plan()),/SIGNATURE_NOT_VERIFIED/);assert.equal(d.sql.length,0)});
+test('tampered later operation does not even prepare first SQL',async()=>{const d=fake(),p=plan();p.operations.push({...p.operations[0],sql:'DELETE FROM seats'});p.seatCount=2;await assert.rejects(executePaidCommit(d,p,{signatureVerified:true}),/UNTRUSTED_PLAN/);assert.equal(d.sql.length,0)});
+test('atomic batch has guard for seat and reservation',async()=>{const d=fake();await executePaidCommit(d,plan(),{signatureVerified:true});assert.equal(d.stmts.length,7);assert.equal(d.sql.filter(x=>x.includes('CASE WHEN changes()=1')).length,2)});
