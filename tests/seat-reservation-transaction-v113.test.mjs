@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {prepareReservationTransaction,executeReservationTransaction} from '../src/seat-reservation-transaction.js';
+const rid='reservation_123456789012',nonce='nonce_123456789012345678901234';
+const ms=Date.parse('2099-10-22T20:00:00.000Z');
+const row=n=>({sku:`WM-ST-105-B-${String(n).padStart(2,'0')}`,status:'AVAILABLE',hold_id:null,shopify_order_id:null,shopify_variant_id:`gid://shopify/ProductVariant/${n}`,price_cents:16000});
+const plan=()=>prepareReservationTransaction([row(1).sku,row(2).sku],[row(1),row(2)],{reservationId:rid,checkoutNonce:nonce,expiresAt:ms});
+const fake=()=>{const calls=[];return {calls,db:{prepare(sql){const x={sql,params:[]};calls.push(x);return {bind(...params){x.params=params;return this}}},async batch(stmts){assert.equal(stmts.length,calls.length);return []}}}};
+test('plans integer millisecond expiry',()=>assert.equal(plan().expiresAt,ms));
+test('writes required created_at and integer expiry to reservations',async()=>{const f=fake();await executeReservationTransaction(f.db,plan(),{authorized:true});const x=f.calls.find(x=>x.sql.startsWith('INSERT INTO reservations'));assert.match(x.sql,/created_at/);assert.equal(typeof x.params[1],'number');assert.equal(x.params[3],ms)});
+test('holds use integer expiry and exact mapped variant',async()=>{const f=fake();await executeReservationTransaction(f.db,plan(),{authorized:true});const holds=f.calls.filter(x=>x.sql.startsWith('UPDATE seats'));assert.equal(holds.length,2);for(const h of holds){assert.equal(h.params[1],ms);assert.match(h.sql,/shopify_variant_id=\?/)} });
+test('requires authorization before SQL preparation',async()=>{const f=fake();await assert.rejects(executeReservationTransaction(f.db,plan()),/NOT_AUTHORIZED/);assert.equal(f.calls.length,0)});
+test('rejects duplicated variants before SQL preparation',async()=>{const f=fake(),p=plan();p.seats[1].variantId=p.seats[0].variantId;await assert.rejects(executeReservationTransaction(f.db,p,{authorized:true}),/INVALID_PLAN/);assert.equal(f.calls.length,0)});
+test('rejects expired reservations',async()=>{const f=fake(),p=plan();p.expiresAt=1000000000000;await assert.rejects(executeReservationTransaction(f.db,p,{authorized:true}),/INVALID_EXPIRATION/);assert.equal(f.calls.length,0)});
