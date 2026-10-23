@@ -1,1 +1,1 @@
-V118: add tests/seat-paid-webhook-integration-v118.test.mjs. Isolated signed webhook tests with fake D1; no production mutation or checkout activation. Requires existing src/ modules. Commit and inspect GitHub Actions full suite.
+V119 read-only expiration eligibility audit. Add src/seat-expiry-audit.js and tests/seat-expiry-audit-v119.test.mjs. This does NOT execute cleanup, change production D1, or enable sales. Requires existing src/seat-expiry.js. Run GitHub Actions after commit.
