@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {planHold,planExpiryCleanup,evaluateHold} from '../src/seat-reservation-core.js';
+const sku='WM-ST-105-B-06',reservationId='reservation_123456789';
+const expiry='2099-01-01T00:00:00.000Z',ms=Date.parse(expiry);
+test('ISO hold expiry becomes integer D1 epoch milliseconds',()=>assert.equal(planHold([sku],{reservationId,expiresAt:expiry})[0].params[1],ms));
+test('integer hold expiry stays integer',()=>assert.equal(planHold([sku],{reservationId,expiresAt:ms})[0].params[1],ms));
+test('cleanup uses integer timestamp with ISO caller',()=>assert.deepEqual(planExpiryCleanup({beforeIso:expiry}).selectParams,[ms,100]));
+test('cleanup accepts integer timestamp',()=>assert.deepEqual(planExpiryCleanup({beforeEpochMs:ms,limit:3}).selectParams,[ms,3]));
+test('cleanup never selects sold seats',()=>assert.match(planExpiryCleanup({beforeEpochMs:ms}).selectSql,/shopify_order_id IS NULL/));
+test('invalid expiry rejected',()=>assert.throws(()=>planHold([sku],{reservationId,expiresAt:'nonsense'}),/INVALID_EXPIRATION/));
+test('UNRELEASED seats remain unavailable',()=>assert.equal(evaluateHold([sku],[{sku,status:'UNRELEASED',price_cents:16000,shopify_variant_id:'gid://shopify/ProductVariant/1'}]).ready,false));
