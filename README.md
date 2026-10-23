@@ -1,7 +1,14 @@
-# Wheeling V111: paid-commit database enum fix (staging only)
+# Wheeling V112: D1 expiry and confirmed reservation compatibility
 
-Copy both files into matching paths in the GitHub repository `MNTR-Lab/wheeling-miners-store`, replacing `src/seat-paid-commit.js` and adding `tests/seat-paid-commit-v111.test.mjs`.
+Upload **complete replacements** to matching repository paths:
 
-Run `node --test tests/seat-paid-commit-v111.test.mjs` in the repository.
+- `src/seat-expiry.js` (new)
+- `src/seat-checkout-linkage.js` (replace)
+- `src/seat-fulfillment-transaction.js` (replace)
+- `tests/seat-expiry-v112.test.mjs` (new)
 
-**Important:** This is one isolated fix, NOT checkout-ready. Existing V105 tests still assert `PAID` and will need updating in the next coordinated compatibility batch. Reservation expiry, hold expiry, and created_at contract remain unresolved. No production DB migrations, seat release, inventory, products, or checkout changes are included. Do not activate sales.
+No database changes. No checkout routes, inventory release, or product publishing.
+
+This increment corrects D1 INTEGER expiry handling and CONFIRMED replay semantics in ownership/fulfillment modules. The reservation creation/hold planner still needs V113 to store integer expiry and created_at. Do not enable checkout. Older test fixtures may still assume PAID and need updating as part of the coordinated V113 test migration.
+
+Run: `node --test tests/seat-expiry-v112.test.mjs`
