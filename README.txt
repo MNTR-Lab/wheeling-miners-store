@@ -1,13 +1,11 @@
-WHEELING MINERS OFFICIAL STORE — DESIGN V1
+Wheeling Miners test database schema setup
 
-Upload index.html and the entire assets/ folder to the ROOT of MNTR-Lab/wheeling-miners-store.
-Keep assets/miners-primary.png in its exact relative path.
-Cloudflare Pages will automatically deploy the main branch.
+Upload .github/workflows/wheeling-test-schema-deploy.yml into the SAME PATH in GitHub and commit.
 
-This is a VISUAL PREVIEW, not a live Shopify sales channel.
-Featured merchandise images are from the existing GOAT Sports Shopify catalog.
-The product list is currently hard-coded and products were previously observed in draft status.
-The preview cart is not a real checkout, and no orders are placed.
+Then GitHub > Actions > Wheeling TEST D1 schema setup > Run workflow > Run workflow.
 
-NEXT: approve the visual design, then integrate published products and variants using Shopify Storefront API with a public Storefront token and Shopify hosted checkout.
-Never put a Shopify Admin API token in frontend source code.
+The workflow explicitly checks the test Worker configuration and targets the test D1 database ID 2a06b7a7-e833-4a01-8667-2f6388dc0ee0. It does not deploy production or publish Shopify products.
+
+Only run it after confirming CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID GitHub secrets are set. The workflow uses the account ID already present in the repository's read-only diagnostic.
+
+Expected: successful schema creation, five named tables, and test_seats = 0.
