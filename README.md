@@ -1,1 +1,1 @@
-V120 offline end-to-end reservation-to-checkout rehearsal. Add src/seat-checkout-rehearsal.js and tests/seat-checkout-rehearsal-v120.test.mjs. Uses existing source modules. No network, D1 writes, Shopify writes, or checkout activation. Full GitHub Actions run required.
+V121 deployed Worker routing contract regression. Add tests/seat-worker-routing-v121.test.mjs. Verifies guarded webhook handler and locked public routes. No source changes or production writes. Commit and run GitHub Actions.
