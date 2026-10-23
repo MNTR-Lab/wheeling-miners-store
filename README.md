@@ -1,1 +1,1 @@
-V127: Add src/seat-checkout-handoff.js and tests/seat-checkout-handoff-v127.test.mjs. Verifies reserved seat snapshots, Shopify variant IDs, reservation ownership, and expiry before generating a read-only handoff payload. No live Shopify checkout, public routes, or production mutations. CI tests pending.
+V128 controlled-launch assessment. Add src/seat-controlled-launch-assessment.js, tests/seat-controlled-launch-v128.test.mjs, and LAUNCH-CHECKLIST.md. All checks are offline and fail closed. No checkout or production mutations.
