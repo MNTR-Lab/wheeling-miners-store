@@ -1,1 +1,1 @@
-V124 read-only launch inventory preflight. Add src/seat-launch-preflight.js and tests/seat-launch-preflight-v124.test.mjs. Structural checks are NOT sales authorization. No checkout enablement or mutations. Tests require GitHub Actions verification.
+V125: Complete offline purchase-contract rehearsal. Add src/seat-complete-purchase-rehearsal.js and tests/seat-complete-purchase-v125.test.mjs. Exercises existing reservation, checkout payload, and paid commit planners together. No live checkout or payments are enabled. Run CI after commit.
