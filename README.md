@@ -1,1 +1,1 @@
-V122: add src/seat-refund-preview.js and tests/seat-refund-preview-v122.test.mjs. Offline-only refund and cancellation review planner. It NEVER refunds, releases, or restores a sold seat. Manual approval and production implementation remain required.
+V123: Add tests/seat-multi-paid-webhook-v123.test.mjs. Six mocked two-seat signed webhook tests for guarded atomic payment fulfillment. No production DB or Shopify calls. Run GitHub Actions after commit.
