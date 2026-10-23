@@ -1,0 +1,40 @@
+name: Wheeling TEST D1 schema setup
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify isolated target and required secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN'; exit 1; }
+          test "$CLOUDFLARE_ACCOUNT_ID" = '0b83177a971bd8fcfad88ed4e531eb50' || { echo 'Cloudflare account mismatch'; exit 1; }
+          node --input-type=module <<'JS'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.test.jsonc','utf8'));
+          if(c.name!=='wheeling-miners-store-test'||c.d1_databases?.length!==1||c.d1_databases[0].database_id!=='2a06b7a7-e833-4a01-8667-2f6388dc0ee0'||c.d1_databases[0].database_name!=='wheeling-miners-seats-test'||c.vars?.SEAT_CONTROLLED_CART_ENABLED!=='false') throw Error('Unsafe test config');
+          if(!readFileSync('data/staging/test-seat-schema.sql','utf8').includes('CREATE TABLE IF NOT EXISTS reservations')) throw Error('Missing schema');
+          console.log('Isolated test configuration verified');
+          JS
+      - name: Apply schema to TEST D1 only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --file data/staging/test-seat-schema.sql
+      - name: Verify TEST schema and empty inventory
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('seats','reservations','reservation_seats','seat_admin_guard','seat_admin_audit') ORDER BY name;"
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command "SELECT COUNT(*) AS test_seats FROM seats;"
