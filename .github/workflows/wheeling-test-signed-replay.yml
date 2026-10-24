@@ -1,0 +1,67 @@
+name: Wheeling TEST signed webhook replay
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify signed webhook replay in staging mode (no writes)
+        env:
+          WM_TEST_WEBHOOK_SECRET: ${{ secrets.WM_TEST_WEBHOOK_SECRET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node --input-type=module <<'JS'
+          import {createHmac,randomUUID} from 'node:crypto';
+          const secret=process.env.WM_TEST_WEBHOOK_SECRET;
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          if(!secret||!token||account!=='0b83177a971bd8fcfad88ed4e531eb50')throw Error('Required TEST-only secrets missing or incorrect account');
+          const database='2a06b7a7-e833-4a01-8667-2f6388dc0ee0';
+          async function query(sql){
+            const res=await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${database}/query`,{
+              method:'POST',headers:{Authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({sql})
+            });
+            const data=await res.json();
+            if(!res.ok||data.success!==true||data.result?.[0]?.success!==true)throw Error('TEST D1 read failed');
+            return data.result[0].results;
+          }
+          const seatSql="SELECT sku,status,shopify_order_id,hold_id,hold_expires_at FROM seats WHERE sku='WM-ST-105-B-01'";
+          const reservationSql="SELECT id,status,shopify_order_id,checkout_nonce FROM reservations WHERE id='wm_test_reservation_105_B_01'";
+          const beforeSeat=await query(seatSql),beforeReservation=await query(reservationSql);
+          if(beforeSeat.length!==1||beforeReservation.length!==1||beforeSeat[0].status!=='SOLD'||beforeReservation[0].status!=='CONFIRMED'||String(beforeSeat[0].shopify_order_id)!=='18969898221625'||String(beforeReservation[0].shopify_order_id)!=='18969898221625')throw Error('Existing test order is not confirmed; refusing replay');
+          const order={
+            id:18969898221625,
+            line_items:[{sku:'WM-ST-105-B-01',variant_id:50931850575929,quantity:1}],
+            note_attributes:[
+              {name:'wm_reservation_id',value:'wm_test_reservation_105_B_01'},
+              {name:'wm_checkout_nonce',value:beforeReservation[0].checkout_nonce}
+            ]
+          };
+          const body=JSON.stringify(order);
+          const signature=createHmac('sha256',secret).update(body,'utf8').digest('base64');
+          const endpoint='https://wheeling-miners-store-test.bikard.workers.dev/api/seats/webhooks/shopify';
+          const response=await fetch(endpoint,{
+            method:'POST',headers:{'content-type':'application/json','x-shopify-topic':'orders/paid','x-shopify-hmac-sha256':signature,'x-shopify-webhook-id':randomUUID()},body
+          });
+          const result=await response.json();
+          // The staging gate MUST remain closed. A signed order is inspected, not committed.
+          if(response.status!==503||result.error!=='MANUAL_RECONCILIATION_REQUIRED'||result.staging!==true||result.inspection?.reason!=='ALREADY_FULFILLED'||result.inspection?.already_fulfilled!==true||result.inspection?.ownership_verified!==true){
+            console.error('Response status:',response.status,'Error:',result.error,'Inspection reason:',result.inspection?.reason);
+            throw Error('Signed staging replay not verified; check secret matches Worker and staging gate remains OFF');
+          }
+          const afterSeat=await query(seatSql),afterReservation=await query(reservationSql);
+          if(JSON.stringify(beforeSeat)!==JSON.stringify(afterSeat)||JSON.stringify(beforeReservation)!==JSON.stringify(afterReservation))throw Error('Unexpected database change after read-only signed replay');
+          console.log('PASS: Signed webhook accepted for inspection by deployed TEST Worker');
+          console.log('PASS: Correct Shopify order and checkout nonce ownership verified');
+          console.log('PASS: Existing paid order recognized as ALREADY_FULFILLED');
+          console.log('PASS: Fulfillment gate remains disabled (HTTP 503)');
+          console.log('PASS: Test seat and reservation unchanged');
+          console.log('NOTE: This is a locally signed test payload, not an actual Shopify delivery.');
+          JS
