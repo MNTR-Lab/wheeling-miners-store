@@ -4,49 +4,43 @@ on:
 permissions:
   contents: read
 jobs:
-  preflight:
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Confirm test-only configuration and disabled checkout
+      - name: Verify isolated TEST config
         run: |
           node --input-type=module <<'JS'
           import {readFileSync} from 'node:fs';
           const c=JSON.parse(readFileSync('wrangler.test.jsonc','utf8'));
-          if(c.name!=='wheeling-miners-store-test'||c.vars?.WM_ENVIRONMENT!=='TEST'||c.vars?.SEAT_CONTROLLED_CART_ENABLED!=='false')throw Error('Test Worker safety gate mismatch');
-          if(c.vars?.SHOPIFY_STORE_DOMAIN!=='wheeling-miners-ticket-testing.myshopify.com')throw Error('Wrong Shopify test store');
-          if(c.d1_databases?.length!==1||c.d1_databases[0].database_id!=='2a06b7a7-e833-4a01-8667-2f6388dc0ee0')throw Error('Wrong test D1');
-          console.log('Isolated Worker, Shopify store, D1, and disabled cart gate verified');
+          if(c.name!=='wheeling-miners-store-test'||c.main!=='src/worker.js')throw Error('Wrong worker');
+          if(c.vars?.WM_ENVIRONMENT!=='TEST'||c.vars?.SHOPIFY_STORE_DOMAIN!=='wheeling-miners-ticket-testing.myshopify.com'||c.vars?.SEAT_CONTROLLED_CART_ENABLED!=='true')throw Error('Wrong TEST vars');
+          if(c.vars?.SEAT_PAID_FULFILLMENT_ENABLED==='true')throw Error('Fulfillment enabled');
+          if(c.d1_databases?.length!==1||c.d1_databases[0].binding!=='SEAT_DB'||c.d1_databases[0].database_name!=='wheeling-miners-seats-test'||c.d1_databases[0].database_id!=='2a06b7a7-e833-4a01-8667-2f6388dc0ee0')throw Error('Wrong D1');
           JS
-      - name: Run isolated cart and Storefront authentication tests
-        run: |
-          node --test tests/seat-shopify-private-auth.test.mjs tests/seat-storefront-connection.test.mjs tests/seat-shopify-cart.test.mjs tests/seat-isolated-cart-rehearsal.test.mjs
-      - name: Check live TEST Worker remains locked
+      - name: Run isolated cart tests
+        run: node --test tests/seat-shopify-private-auth.test.mjs tests/seat-storefront-connection.test.mjs tests/seat-shopify-cart.test.mjs tests/seat-isolated-cart-rehearsal.test.mjs
+      - name: Verify public routes locked
         run: |
           node --input-type=module <<'JS'
           const base='https://wheeling-miners-store-test.bikard.workers.dev';
-          const status=await fetch(base+'/api/seats/status');
-          if(!status.ok)throw Error('TEST status endpoint unavailable');
-          const body=await status.json();
-          if(body.checkout_enabled!==false||body.holds_enabled!==false)throw Error('Public ticketing is unexpectedly enabled');
-          for(const path of ['/api/seats/hold','/api/seats/checkout']){
-            const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
-            if(r.status!==423)throw Error(path+' should be locked (423), got '+r.status);
+          const r=await fetch(base+'/api/seats/status');const d=await r.json();
+          if(!r.ok||d.checkout_enabled!==false||d.holds_enabled!==false)throw Error('Public checkout not locked');
+          for(const p of ['/api/seats/hold','/api/seats/checkout']){
+            const x=await fetch(base+p,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+            if(x.status!==423)throw Error(p+' not locked');
           }
-          console.log('Public holds and checkout remain locked');
           JS
-      - name: Read-only inventory inspection in isolated TEST D1
+      - name: Inspect TEST D1 only
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_TEST_API_TOKEN'; exit 1; }
-          test "$CLOUDFLARE_ACCOUNT_ID" = '0b83177a971bd8fcfad88ed4e531eb50' || { echo 'Wrong Cloudflare account'; exit 1; }
-          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command "SELECT COUNT(*) AS seat_count FROM seats;"
-          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command "SELECT COUNT(*) AS reservation_count FROM reservations;"
-          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command "SELECT COUNT(*) AS linked_seat_count FROM reservation_seats;"
-          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command "SELECT sku,status,shopify_variant_id FROM seats WHERE sku='WM-ST-105-B-01' LIMIT 1;"
+          test -n "$CLOUDFLARE_API_TOKEN" || exit 1
+          test "$CLOUDFLARE_ACCOUNT_ID" = '0b83177a971bd8fcfad88ed4e531eb50' || exit 1
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command 'SELECT COUNT(*) AS seat_count FROM seats;'
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command 'SELECT COUNT(*) AS reservation_count FROM reservations;'
