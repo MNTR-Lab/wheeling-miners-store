@@ -29,7 +29,7 @@ export async function createControlledSeatCart({reservation,linkedSeats,seatRows
  if(typeof shop!=='string'||!HOST.test(shop)||typeof token!=='string'||token.length<10)fail('SHOPIFY_STOREFRONT_NOT_CONFIGURED');
  const handoff=verifyCheckoutHandoff(reservation,linkedSeats,seatRows,{now});
  const input=buildSeatCartInput(handoff);
- const response=await fetchImpl(`https://${shop}/api/2026-10/graphql.json`,{method:'POST',headers:{'content-type':'application/json','x-shopify-storefront-access-token':token},body:JSON.stringify({query:MUTATION,variables:{input}})});
+ const response=await fetchImpl(`https://${shop}/api/2026-10/graphql.json`,{method:'POST',headers:{'content-type':'application/json','Shopify-Storefront-Private-Token':token},body:JSON.stringify({query:MUTATION,variables:{input}})});
  if(!response?.ok)fail('SHOPIFY_CART_HTTP_ERROR');
  const result=await response.json();
  if(result?.errors?.length||result?.data?.cartCreate?.userErrors?.length)fail('SHOPIFY_CART_REJECTED');
