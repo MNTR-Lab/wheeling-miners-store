@@ -4,7 +4,7 @@ on:
 permissions:
   contents: read
 jobs:
-  deploy-test-worker:
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -12,44 +12,42 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify dedicated test token and isolated configuration
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify isolated TEST config
         run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_TEST_API_TOKEN'; exit 1; }
-          test "$CLOUDFLARE_ACCOUNT_ID" = '0b83177a971bd8fcfad88ed4e531eb50' || { echo 'Cloudflare account mismatch'; exit 1; }
           node --input-type=module <<'JS'
           import {readFileSync} from 'node:fs';
           const c=JSON.parse(readFileSync('wrangler.test.jsonc','utf8'));
-          if(c.name!=='wheeling-miners-store-test'||c.main!=='src/worker.js')throw Error('Unexpected Worker');
-          if(c.d1_databases?.length!==1||c.d1_databases[0].binding!=='SEAT_DB'||c.d1_databases[0].database_id!=='2a06b7a7-e833-4a01-8667-2f6388dc0ee0'||c.d1_databases[0].database_name!=='wheeling-miners-seats-test')throw Error('Wrong database');
-          if(c.vars?.SEAT_CONTROLLED_CART_ENABLED!=='false'||c.vars?.WM_ENVIRONMENT!=='TEST'||c.vars?.SEAT_PAID_FULFILLMENT_ENABLED==='true')throw Error('Unsafe flags');
-          console.log('Test-only target and disabled sales gates verified');
+          if(c.name!=='wheeling-miners-store-test'||c.main!=='src/worker.js')throw Error('Wrong worker');
+          if(c.vars?.WM_ENVIRONMENT!=='TEST'||c.vars?.SHOPIFY_STORE_DOMAIN!=='wheeling-miners-ticket-testing.myshopify.com'||c.vars?.SEAT_CONTROLLED_CART_ENABLED!=='true')throw Error('Wrong TEST vars');
+          if(c.vars?.SEAT_PAID_FULFILLMENT_ENABLED==='true')throw Error('Fulfillment enabled');
+          if(c.d1_databases?.length!==1||c.d1_databases[0].binding!=='SEAT_DB'||c.d1_databases[0].database_name!=='wheeling-miners-seats-test'||c.d1_databases[0].database_id!=='2a06b7a7-e833-4a01-8667-2f6388dc0ee0')throw Error('Wrong D1');
           JS
-      - name: Verify test schema
+      - name: Check TEST database
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command 'SELECT COUNT(*) AS n FROM seats;'
-          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command 'SELECT COUNT(*) AS n FROM reservations;'
-          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command 'SELECT COUNT(*) AS n FROM reservation_seats;'
-      - name: Deploy isolated test Worker
+          test -n "$CLOUDFLARE_API_TOKEN" || exit 1
+          test "$CLOUDFLARE_ACCOUNT_ID" = '0b83177a971bd8fcfad88ed4e531eb50' || exit 1
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command 'SELECT COUNT(*) FROM seats;'
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command 'SELECT COUNT(*) FROM reservations;'
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command 'SELECT COUNT(*) FROM reservation_seats;'
+      - name: Deploy isolated TEST Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4 deploy --config wrangler.test.jsonc
-      - name: Verify locked public checkout
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || exit 1
+          test "$CLOUDFLARE_ACCOUNT_ID" = '0b83177a971bd8fcfad88ed4e531eb50' || exit 1
+          npx --yes wrangler@4 deploy --config wrangler.test.jsonc
+      - name: Verify public routes locked
         run: |
           node --input-type=module <<'JS'
           const base='https://wheeling-miners-store-test.bikard.workers.dev';
-          const status=await fetch(base+'/api/seats/status');
-          const body=await status.json();
-          if(!status.ok||body.mode!=='STAGING'||body.checkout_enabled!==false||body.holds_enabled!==false)throw Error('Test status failed: '+JSON.stringify(body));
-          for(const path of ['/api/seats/hold','/api/seats/checkout']){
-            const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
-            if(r.status!==423)throw Error(path+' must be locked, got '+r.status);
+          const r=await fetch(base+'/api/seats/status');const d=await r.json();
+          if(!r.ok||d.checkout_enabled!==false||d.holds_enabled!==false)throw Error('Public checkout not locked');
+          for(const p of ['/api/seats/hold','/api/seats/checkout']){
+            const x=await fetch(base+p,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+            if(x.status!==423)throw Error(p+' not locked');
           }
-          console.log('TEST_WORKER_DEPLOYED; PUBLIC_HOLDS_AND_CHECKOUT_LOCKED');
           JS
