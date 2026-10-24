@@ -5,13 +5,29 @@ const expected=3737;
 const cfToken=process.env.CLOUDFLARE_API_TOKEN;
 const account=process.env.CLOUDFLARE_ACCOUNT_ID;
 const shop=String(process.env.WM_SHOPIFY_PRODUCTION_STORE_DOMAIN||'').trim().toLowerCase();
-const shopToken=process.env.WM_SHOPIFY_PRODUCTION_ADMIN_TOKEN;
+const clientId=process.env.WM_SHOPIFY_CLIENT_ID;
+const clientSecret=process.env.WM_SHOPIFY_CLIENT_SECRET;
 function check(condition,message){if(!condition)throw Error(message)}
 check(account===ACCOUNT,'Cloudflare account mismatch; aborting');
 check(cfToken,'Missing CLOUDFLARE_API_TOKEN');
 check(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shop),'Set repository variable WM_SHOPIFY_PRODUCTION_STORE_DOMAIN to the actual production *.myshopify.com domain');
 check(shop!=='wheeling-miners-ticket-testing.myshopify.com','Refusing to audit the TEST Shopify store as production');
-check(shopToken,'Missing GitHub Actions secret WM_SHOPIFY_PRODUCTION_ADMIN_TOKEN (read_products access required)');
+check(clientId,'Missing GitHub Actions secret WM_SHOPIFY_CLIENT_ID');
+check(clientSecret,'Missing GitHub Actions secret WM_SHOPIFY_CLIENT_SECRET');
+async function getShopifyToken(){
+ const body=new URLSearchParams({grant_type:'client_credentials',client_id:clientId,client_secret:clientSecret});
+ const response=await fetch(`https://${shop}/admin/oauth/access_token`,{
+  method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString()});
+ if(!response.ok){
+  console.error(`Shopify client credentials authentication failed (HTTP ${response.status}). Confirm the app is installed on GOAT Sports and supports client credentials; check app access and credentials. No credentials were logged.`);
+  process.exit(1);
+ }
+ const data=await response.json();
+ check(typeof data.access_token==='string'&&data.access_token.length>0,'Shopify did not return an Admin API access token');
+ if(data.scope && !data.scope.split(',').map(s=>s.trim()).includes('read_products')) console.warn('NOTICE: Returned Shopify scopes do not explicitly include read_products');
+ console.log('PASS: Shopify Admin API authentication succeeded (token withheld)');
+ return data.access_token;
+}
 async function d1(sql){
  const res=await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/d1/database/${DATABASE}/query`,{
   method:'POST',headers:{Authorization:`Bearer ${cfToken}`,'content-type':'application/json'},body:JSON.stringify({sql})});
@@ -19,6 +35,7 @@ async function d1(sql){
  check(res.ok&&body.success&&body.result?.[0]?.success,`Cloudflare D1 read failed (${res.status})`);
  return body.result[0].results;
 }
+const shopToken=await getShopifyToken();
 const rows=await d1('SELECT sku,shopify_variant_id,price_cents,status FROM seats ORDER BY sku');
 check(rows.length===expected,`Expected ${expected} production seats; found ${rows.length}`);
 const skuSet=new Set(),variantSet=new Set();
@@ -37,7 +54,7 @@ async function graphql(ids){
    method:'POST',headers:{'X-Shopify-Access-Token':shopToken,'Content-Type':'application/json'},
    body:JSON.stringify({query,variables:{ids}})});
   if((response.status===429||response.status>=500)&&attempt<3){await new Promise(r=>setTimeout(r,1500*(attempt+1)));continue}
-  check(response.ok,`Shopify Admin API HTTP ${response.status}; verify production domain and Admin API token`);
+  check(response.ok,`Shopify Admin API HTTP ${response.status}; verify production domain and app scopes`);
   const data=await response.json();
   check(!data.errors?.length,`Shopify GraphQL errors: ${data.errors.map(e=>e.message).join('; ').slice(0,300)}`);
   check(Array.isArray(data.data?.nodes)&&data.data.nodes.length===ids.length,'Shopify variant query returned incomplete data');
