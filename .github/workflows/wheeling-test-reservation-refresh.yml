@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       approval:
-        description: 'Type REFRESH-TEST-RESERVATION to renew only the existing isolated test hold'
+        description: 'Type REFRESH-TEST-RESERVATION to renew the isolated test hold'
         required: true
         type: string
 permissions:
@@ -25,6 +25,8 @@ jobs:
           const c=JSON.parse(readFileSync('wrangler.test.jsonc','utf8'));
           if(c.name!=='wheeling-miners-store-test'||c.vars?.WM_ENVIRONMENT!=='TEST'||c.vars?.SEAT_CONTROLLED_CART_ENABLED!=='false'||c.vars?.SHOPIFY_STORE_DOMAIN!=='wheeling-miners-ticket-testing.myshopify.com')throw Error('Unsafe configuration');
           if(c.d1_databases?.length!==1||c.d1_databases[0].database_id!=='2a06b7a7-e833-4a01-8667-2f6388dc0ee0')throw Error('Wrong D1');
+          const sql=readFileSync('data/staging/refresh-test-cart-fixture.sql','utf8');
+          if(/\b(BEGIN|COMMIT|ROLLBACK|DELETE|DROP|INSERT|ALTER)\b/i.test(sql.replace(/^--.*$/gm,'')))throw Error('Unsafe refresh SQL');
           console.log('Isolated test target and locked checkout verified');
           JS
       - name: Refresh existing synthetic reservation ONLY
@@ -35,12 +37,12 @@ jobs:
           test -n "$CLOUDFLARE_API_TOKEN" || exit 1
           test "$CLOUDFLARE_ACCOUNT_ID" = '0b83177a971bd8fcfad88ed4e531eb50' || exit 1
           npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --file data/staging/refresh-test-cart-fixture.sql
-      - name: Read-only verification
+      - name: Verify matching fresh expiries
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command "SELECT r.id,r.status,r.expires_at,s.sku,s.status AS seat_status,s.hold_expires_at,s.shopify_variant_id FROM reservations r JOIN seats s ON s.hold_id=r.id WHERE r.id='wm_test_reservation_105_B_01';"
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command "SELECT CASE WHEN COUNT(*)=1 AND MIN(r.expires_at)=MIN(s.hold_expires_at) AND MIN(r.expires_at)>(CAST(strftime('%s','now') AS INTEGER)*1000+3000000) THEN 1 ELSE load_extension('REFRESH_FAILED') END AS verified FROM reservations r JOIN seats s ON s.hold_id=r.id WHERE r.id='wm_test_reservation_105_B_01' AND r.status='HELD' AND s.status='HELD' AND s.shopify_variant_id='gid://shopify/ProductVariant/50931850575929';"
       - name: Verify public checkout remains locked
         run: |
           node --input-type=module <<'JS'
