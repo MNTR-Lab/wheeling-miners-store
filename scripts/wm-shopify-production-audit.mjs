@@ -16,12 +16,8 @@ check(clientId,'Missing GitHub Actions secret WM_SHOPIFY_CLIENT_ID');
 check(clientSecret,'Missing GitHub Actions secret WM_SHOPIFY_CLIENT_SECRET');
 async function getShopifyToken(){
  const body=new URLSearchParams({grant_type:'client_credentials',client_id:clientId,client_secret:clientSecret});
- const response=await fetch(`https://${shop}/admin/oauth/access_token`,{
-  method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString()});
- if(!response.ok){
-  console.error(`Shopify client credentials authentication failed (HTTP ${response.status}). Confirm the app is installed on GOAT Sports and supports client credentials; check app access and credentials. No credentials were logged.`);
-  process.exit(1);
- }
+ const response=await fetch(`https://${shop}/admin/oauth/access_token`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString()});
+ if(!response.ok)throw Error(`Shopify client credentials authentication failed (HTTP ${response.status}). Verify app installation and credentials.`);
  const data=await response.json();
  check(typeof data.access_token==='string'&&data.access_token.length>0,'Shopify did not return an Admin API access token');
  if(data.scope && !data.scope.split(',').map(s=>s.trim()).includes('read_products')) console.warn('NOTICE: Returned Shopify scopes do not explicitly include read_products');
@@ -29,8 +25,7 @@ async function getShopifyToken(){
  return data.access_token;
 }
 async function d1(sql){
- const res=await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/d1/database/${DATABASE}/query`,{
-  method:'POST',headers:{Authorization:`Bearer ${cfToken}`,'content-type':'application/json'},body:JSON.stringify({sql})});
+ const res=await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/d1/database/${DATABASE}/query`,{method:'POST',headers:{Authorization:`Bearer ${cfToken}`,'content-type':'application/json'},body:JSON.stringify({sql})});
  const body=await res.json();
  check(res.ok&&body.success&&body.result?.[0]?.success,`Cloudflare D1 read failed (${res.status})`);
  return body.result[0].results;
@@ -50,15 +45,21 @@ console.log(`PASS: ${rows.length} unique production seats, unique mapped variant
 const query=`query AuditVariants($ids:[ID!]!){nodes(ids:$ids){... on ProductVariant{id sku price product{id status}}}}`;
 async function graphql(ids){
  for(let attempt=0;attempt<4;attempt++){
-  const response=await fetch(`https://${shop}/admin/api/2026-10/graphql.json`,{
-   method:'POST',headers:{'X-Shopify-Access-Token':shopToken,'Content-Type':'application/json'},
-   body:JSON.stringify({query,variables:{ids}})});
+  const response=await fetch(`https://${shop}/admin/api/2026-10/graphql.json`,{method:'POST',headers:{'X-Shopify-Access-Token':shopToken,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{ids}})});
   if((response.status===429||response.status>=500)&&attempt<3){await new Promise(r=>setTimeout(r,1500*(attempt+1)));continue}
   check(response.ok,`Shopify Admin API HTTP ${response.status}; verify production domain and app scopes`);
-  const data=await response.json();
-  check(!data.errors?.length,`Shopify GraphQL errors: ${data.errors.map(e=>e.message).join('; ').slice(0,300)}`);
-  check(Array.isArray(data.data?.nodes)&&data.data.nodes.length===ids.length,'Shopify variant query returned incomplete data');
-  return data.data.nodes;
+  const payload=await response.json();
+  // Shopify may return GraphQL errors while HTTP status is 200. Never crash while reporting them.
+  if(Array.isArray(payload.errors)&&payload.errors.length){
+   const details=payload.errors.slice(0,3).map(e=>{
+    const message=String(e?.message||'Unknown GraphQL error');
+    const code=e?.extensions?.code ? ` [${e.extensions.code}]` : '';
+    return `${message}${code}`;
+   }).join('; ');
+   throw Error(`Shopify GraphQL query rejected: ${details.slice(0,650)}. Check read_products scope and Shopify API query permissions.`);
+  }
+  check(Array.isArray(payload.data?.nodes)&&payload.data.nodes.length===ids.length,'Shopify variant query returned incomplete data');
+  return payload.data.nodes;
  }
  throw Error('Shopify API unavailable after retries');
 }
