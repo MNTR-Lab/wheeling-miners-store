@@ -1,0 +1,259 @@
+name: Wheeling TEST webhook verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-test-webhook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify isolated test configuration
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+
+          const c = JSON.parse(
+            readFileSync('wrangler.test.jsonc', 'utf8')
+          );
+
+          const db = c.d1_databases?.[0];
+
+          if (c.name !== 'wheeling-miners-store-test') {
+            throw Error('Incorrect Worker');
+          }
+
+          if (c.vars?.WM_ENVIRONMENT !== 'TEST') {
+            throw Error('Not test environment');
+          }
+
+          if (
+            c.vars?.SHOPIFY_STORE_DOMAIN !==
+            'wheeling-miners-ticket-testing.myshopify.com'
+          ) {
+            throw Error('Incorrect Shopify store');
+          }
+
+          if (c.vars?.SEAT_PAID_FULFILLMENT_ENABLED === 'true') {
+            throw Error('Automatic fulfillment must remain disabled');
+          }
+
+          if (
+            c.d1_databases?.length !== 1 ||
+            db?.binding !== 'SEAT_DB' ||
+            db?.database_name !== 'wheeling-miners-seats-test' ||
+            db?.database_id !==
+            '2a06b7a7-e833-4a01-8667-2f6388dc0ee0'
+          ) {
+            throw Error('Incorrect test database');
+          }
+
+          console.log('PASS: Isolated test configuration');
+          JS
+
+      - name: Verify deployed webhook security
+        run: |
+          node --input-type=module <<'JS'
+          const base =
+            'https://wheeling-miners-store-test.bikard.workers.dev';
+
+          const endpoint =
+            `${base}/api/seats/webhooks/shopify`;
+
+          const payload = JSON.stringify({
+            id: 18969898221625,
+            line_items: [{
+              sku: 'WM-ST-105-B-01',
+              variant_id: 50931850575929,
+              quantity: 1
+            }],
+            note_attributes: [
+              {
+                name: 'wm_reservation_id',
+                value: 'wm_test_reservation_105_B_01'
+              },
+              {
+                name: 'wm_checkout_nonce',
+                value: 'wm_test_checkout_nonce_105_B_01_2026'
+              }
+            ]
+          });
+
+          const get = await fetch(endpoint);
+
+          if (get.status !== 405) {
+            throw Error(
+              `Webhook GET expected 405, received ${get.status}`
+            );
+          }
+
+          console.log('PASS: Webhook rejects GET');
+
+          const unsigned = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-shopify-topic': 'orders/paid'
+            },
+            body: payload
+          });
+
+          if (unsigned.status !== 401) {
+            throw Error(
+              `Unsigned request expected 401, received ${unsigned.status}`
+            );
+          }
+
+          console.log('PASS: Unsigned webhook rejected');
+
+          const invalid = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-shopify-topic': 'orders/paid',
+              'x-shopify-hmac-sha256': 'invalid-signature'
+            },
+            body: payload
+          });
+
+          if (invalid.status !== 401) {
+            throw Error(
+              `Invalid signature expected 401, received ${invalid.status}`
+            );
+          }
+
+          console.log('PASS: Invalid signature rejected');
+
+          const status = await fetch(`${base}/api/seats/status`);
+
+          if (!status.ok) {
+            throw Error('Seat status endpoint unavailable');
+          }
+
+          const data = await status.json();
+
+          if (
+            data.checkout_enabled !== false ||
+            data.holds_enabled !== false
+          ) {
+            throw Error('Public seat sales are not locked');
+          }
+
+          console.log('PASS: Public checkout disabled');
+
+          for (const path of [
+            '/api/seats/hold',
+            '/api/seats/checkout'
+          ]) {
+            const response = await fetch(`${base}${path}`, {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json'
+              },
+              body: '{}'
+            });
+
+            if (response.status !== 423) {
+              throw Error(`${path} must remain locked`);
+            }
+          }
+
+          console.log('PASS: Public hold and checkout locked');
+          JS
+
+      - name: Verify existing paid test reservation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node --input-type=module <<'JS'
+          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+
+          const expectedAccount =
+            '0b83177a971bd8fcfad88ed4e531eb50';
+
+          const database =
+            '2a06b7a7-e833-4a01-8667-2f6388dc0ee0';
+
+          if (account !== expectedAccount || !token) {
+            throw Error('Test Cloudflare credentials unavailable');
+          }
+
+          async function query(sql) {
+            const url =
+              `https://api.cloudflare.com/client/v4/accounts/` +
+              `${account}/d1/database/${database}/query`;
+
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ sql })
+            });
+
+            const data = await response.json();
+
+            if (
+              !response.ok ||
+              data.success !== true ||
+              data.result?.[0]?.success !== true
+            ) {
+              throw Error('Test database query failed');
+            }
+
+            return data.result[0].results;
+          }
+
+          const seats = await query(`
+            SELECT sku, status, shopify_order_id, hold_id
+            FROM seats
+            WHERE sku = 'WM-ST-105-B-01'
+          `);
+
+          if (
+            seats.length !== 1 ||
+            seats[0].status !== 'SOLD' ||
+            String(seats[0].shopify_order_id) !==
+              '18969898221625' ||
+            seats[0].hold_id !== null
+          ) {
+            throw Error('Paid test seat state mismatch');
+          }
+
+          console.log('PASS: Test seat SOLD');
+
+          const reservations = await query(`
+            SELECT id, status, shopify_order_id
+            FROM reservations
+            WHERE id = 'wm_test_reservation_105_B_01'
+          `);
+
+          if (
+            reservations.length !== 1 ||
+            reservations[0].status !== 'CONFIRMED' ||
+            String(reservations[0].shopify_order_id) !==
+              '18969898221625'
+          ) {
+            throw Error('Paid reservation state mismatch');
+          }
+
+          console.log('PASS: Test reservation CONFIRMED');
+          console.log('PASS: Shopify order linkage verified');
+          console.log('PASS: No database writes performed');
+          JS
+        
