@@ -8,13 +8,14 @@ const base={SHOPIFY_STORE_DOMAIN:'example.myshopify.com',SHOPIFY_STOREFRONT_TOKE
 const endpoint='https://example.test/api/seats/admin/storefront-connection';
 const ok=()=>({ok:true,status:200,json:async()=>({data:{shop:{name:'Test Shop'}}})});
 
-test('Storefront probe succeeds using a read-only GraphQL query',async()=>{
+test('Storefront probe succeeds using a read-only GraphQL query and private token',async()=>{
  let calls=0;
  const result=await verifyShopifyStorefrontConnection(base,{fetchImpl:async(url,init)=>{
   calls++;
   assert.equal(url,'https://example.myshopify.com/api/2026-10/graphql.json');
   assert.equal(init.method,'POST');
-  assert.equal(init.headers['x-shopify-storefront-access-token'],base.SHOPIFY_STOREFRONT_TOKEN);
+  assert.equal(init.headers['Shopify-Storefront-Private-Token'],base.SHOPIFY_STOREFRONT_TOKEN);
+  assert.equal(init.headers['x-shopify-storefront-access-token'],undefined);
   const body=JSON.parse(init.body);
   assert.match(body.query,/shop\s*\{\s*name\s*\}/);
   assert.doesNotMatch(body.query,/mutation|cartCreate|checkoutCreate/i);
@@ -59,7 +60,6 @@ test('admin routing refuses requests without valid bearer token',async()=>{
 });
 
 test('admin routing succeeds with valid bearer token',async()=>{
- // Routing delegates to the native fetch implementation. Use a temporary global fetch mock.
  const original=globalThis.fetch;
  globalThis.fetch=async()=>ok();
  try{
