@@ -6,10 +6,14 @@
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/seats/*", "/seat-selector", "/seat-selector.html"]
+    "run_worker_first": [
+      "/api/seats/*",
+      "/seat-selector",
+      "/seat-selector.html"
+    ]
   },
   "vars": {
-    "SEAT_CONTROLLED_CART_ENABLED": "false",
+    "SEAT_CONTROLLED_CART_ENABLED": "true",
     "SEAT_SHOPIFY_AUTH_PROBE_ENABLED": "true",
     "SHOPIFY_STORE_DOMAIN": "wheeling-miners-ticket-testing.myshopify.com",
     "WM_ENVIRONMENT": "TEST"
