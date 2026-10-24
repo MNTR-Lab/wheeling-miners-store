@@ -42,7 +42,10 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command "SELECT CASE WHEN COUNT(*)=1 AND MIN(r.expires_at)=MIN(s.hold_expires_at) AND MIN(r.expires_at)>(CAST(strftime('%s','now') AS INTEGER)*1000+3000000) THEN 1 ELSE load_extension('REFRESH_FAILED') END AS verified FROM reservations r JOIN seats s ON s.hold_id=r.id WHERE r.id='wm_test_reservation_105_B_01' AND r.status='HELD' AND s.status='HELD' AND s.shopify_variant_id='gid://shopify/ProductVariant/50931850575929';"
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command "SELECT r.id,r.status,r.expires_at,s.sku,s.status AS seat_status,s.hold_expires_at,s.shopify_variant_id FROM reservations r JOIN seats s ON s.hold_id=r.id WHERE r.id='wm_test_reservation_105_B_01';"
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --command "SELECT CASE WHEN COUNT(*)=1 AND MIN(r.expires_at)=MIN(s.hold_expires_at) AND MIN(r.expires_at)>(CAST(strftime('%s','now') AS INTEGER)*1000+3000000) THEN 1 ELSE 0 END AS verified FROM reservations r JOIN seats s ON s.hold_id=r.id WHERE r.id='wm_test_reservation_105_B_01' AND r.status='HELD' AND s.status='HELD' AND s.shopify_variant_id='gid://shopify/ProductVariant/50931850575929';" > verify.txt
+          cat verify.txt
+          grep -Eq 'verified[^0-9]*1' verify.txt || { echo 'Reservation refresh verification failed'; exit 1; }
       - name: Verify public checkout remains locked
         run: |
           node --input-type=module <<'JS'
