@@ -11,7 +11,7 @@ export async function verifyShopifyStorefrontConnection(env,{fetchImpl=fetch}={}
   }
   const response = await fetchImpl(`https://${shop}/api/2026-10/graphql.json`,{
     method:'POST',
-    headers:{'content-type':'application/json','x-shopify-storefront-access-token':token},
+    headers:{'content-type':'application/json','Shopify-Storefront-Private-Token':token},
     body:JSON.stringify({query:'query WheelingStorefrontConnection { shop { name } }'})
   });
   if(!response?.ok)throw new Error(`SHOPIFY_STOREFRONT_HTTP_${response?.status||'ERROR'}`);
