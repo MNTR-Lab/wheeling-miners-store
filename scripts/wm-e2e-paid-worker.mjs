@@ -87,7 +87,17 @@ try{
  writeFileSync(workerConfig,JSON.stringify(isolated,null,2));
  deploymentAttempted=true;
  wrangler(['deploy','--config',workerConfig]);
- wrangler(['secret','put','SHOPIFY_WEBHOOK_SECRET','--name',worker],{input:SECRET+'\n'});
+ // Use the exact same isolated configuration for deployment and secret installation.
+ // Passing --name alone can cause Wrangler to target a different configuration.
+ wrangler(['secret','put','SHOPIFY_WEBHOOK_SECRET','--config',workerConfig],{input:SECRET+'\n'});
+ // Check the binding's name only. Never log or compare the secret's value.
+ const secretOutput=wrangler(['secret','list','--config',workerConfig,'--format','json']);
+ let bindings;
+ try { bindings=JSON.parse(secretOutput); }
+ catch { throw Error('Unable to parse temporary Worker secret listing'); }
+ ensure(Array.isArray(bindings)&&bindings.some(x=>x.name==='SHOPIFY_WEBHOOK_SECRET'&&x.type==='secret_text'),
+  'Temporary Worker webhook secret binding missing after installation');
+ console.log('PASS: webhook signing secret binding installed on isolated Worker');
  const first=await request(order);
  ensure(first.status===200&&first.body?.ok===true&&first.body.replayed===false,`First paid commit failed: ${JSON.stringify(first)}`);
  const state=await sql(`SELECT status,shopify_order_id,hold_id FROM seats WHERE sku='${sku}'`);
