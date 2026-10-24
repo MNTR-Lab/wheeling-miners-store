@@ -1,0 +1,31 @@
+name: Wheeling paid transition integration tests
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/seat-*.js'
+      - 'tests/seat-paid-live-transition-integration.test.mjs'
+      - '.github/workflows/wheeling-paid-transition-integration.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify TEST and production fulfillment are not enabled by config
+        run: |
+          node --input-type=module <<'JS'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.test.jsonc','utf8'));
+          if(c.name!=='wheeling-miners-store-test'||c.vars?.WM_ENVIRONMENT!=='TEST'||c.vars?.SEAT_PAID_FULFILLMENT_ENABLED==='true')throw Error('Unsafe test config');
+          if(c.d1_databases?.length!==1||c.d1_databases[0].database_id!=='2a06b7a7-e833-4a01-8667-2f6388dc0ee0')throw Error('Wrong test D1');
+          JS
+      - name: Run signed paid-transition and replay integration tests
+        run: node --test tests/seat-paid-live-transition-integration.test.mjs
+      - name: Run full regression suite
+        run: node --test tests/*.test.mjs
