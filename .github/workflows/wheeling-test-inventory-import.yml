@@ -1,0 +1,82 @@
+name: Wheeling TEST inventory import (manual, backup first)
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type IMPORT_TEST_3735 to import into isolated TEST D1'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  import-test-only:
+    if: ${{ inputs.confirmation == 'IMPORT_TEST_3735' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TEST_DB: 2a06b7a7-e833-4a01-8667-2f6388dc0ee0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate offline candidate and strict TEST target
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test "$CLOUDFLARE_ACCOUNT_ID" = '0b83177a971bd8fcfad88ed4e531eb50'
+          python3 tools/check-test-inventory-candidate.py
+          node --input-type=module <<'JS'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.test.jsonc','utf8'));
+          if(c.name!=='wheeling-miners-store-test'||c.d1_databases?.length!==1||c.d1_databases[0].database_id!==process.env.TEST_DB||c.d1_databases[0].database_name!=='wheeling-miners-seats-test')throw Error('TEST target mismatch');
+          if(c.vars?.SEAT_CONTROLLED_CART_ENABLED!=='false')throw Error('Checkout must be disabled in repo config');
+          JS
+      - name: Inspect current TEST D1 (no writes)
+        run: |
+          node --input-type=module <<'JS'
+          const api=async sql=>{
+            const r=await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/d1/database/${process.env.TEST_DB}/query`,{method:'POST',headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({sql})});
+            const j=await r.json();if(!r.ok||!j.success)throw Error('TEST D1 query failed: '+JSON.stringify(j.errors));return j.result[0].results;
+          };
+          const rows=await api('SELECT sku,status,price_cents,shopify_order_id,shopify_variant_id FROM seats ORDER BY sku');
+          if(rows.length!==2||rows.some(r=>r.status!=='SOLD'))throw Error('Expected exactly two SOLD test seats');
+          const expected={'WM-ST-105-B-01':'gid://shopify/ProductVariant/50931850575929','WM-ST-105-B-02':'gid://shopify/ProductVariant/50943009259577'};
+          for(const r of rows){if(expected[r.sku]!==r.shopify_variant_id||r.price_cents!==100)throw Error('Existing sold test seat mismatch: '+r.sku);}
+          const tables=await api('PRAGMA table_info(seats)');
+          for(const col of ['sku','section','row_label','seat_number','price_cents','status','shopify_variant_id'])if(!tables.some(c=>c.name===col))throw Error('Missing required column '+col);
+          const res=await api('SELECT COUNT(*) AS n FROM reservations');
+          console.log('TEST-only preflight passed; two SOLD test seats preserved; reservation count '+res[0].n);
+          JS
+      - name: Export TEST D1 backup BEFORE changes
+        run: |
+          set -euo pipefail
+          mkdir -p test-db-backup
+          npx --yes wrangler@4 d1 export wheeling-miners-seats-test --remote --config wrangler.test.jsonc --output test-db-backup/test-d1-before-inventory.sql
+          test -s test-db-backup/test-d1-before-inventory.sql
+      - name: Save TEST backup artifact before any import
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheeling-test-d1-before-import-${{ github.run_id }}
+          path: test-db-backup/test-d1-before-inventory.sql
+          retention-days: 30
+          if-no-files-found: error
+      - name: Import 3735 UNRELEASED seats to TEST D1 only
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --file data/migrations/TEST-inventory-candidate.sql
+      - name: Verify TEST D1 after import
+        run: |
+          node --input-type=module <<'JS'
+          const api=async sql=>{
+            const r=await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/d1/database/${process.env.TEST_DB}/query`,{method:'POST',headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({sql})});
+            const j=await r.json();if(!r.ok||!j.success)throw Error(JSON.stringify(j.errors));return j.result[0].results;
+          };
+          const s=(await api('SELECT COUNT(*) AS total,COUNT(DISTINCT section) AS sections,COUNT(DISTINCT shopify_variant_id) AS variants,SUM(CASE WHEN status=\'SOLD\' THEN 1 ELSE 0 END) AS sold,SUM(CASE WHEN status=\'UNRELEASED\' THEN 1 ELSE 0 END) AS unreleased FROM seats'))[0];
+          if(s.total!==3737||s.sections!==63||s.variants!==3737||s.sold!==2||s.unreleased!==3735)throw Error('Post-import verification failed: '+JSON.stringify(s));
+          const sold=await api("SELECT sku,price_cents,shopify_variant_id FROM seats WHERE status='SOLD' ORDER BY sku");
+          if(sold.length!==2||sold[0].sku!=='WM-ST-105-B-01'||sold[1].sku!=='WM-ST-105-B-02'||sold.some(x=>x.price_cents!==100))throw Error('Sold seat protection failed');
+          console.log('VERIFIED TEST IMPORT: '+JSON.stringify(s));
+          JS
