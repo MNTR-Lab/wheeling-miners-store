@@ -1,0 +1,20 @@
+name: Wheeling TEST exhaustive seat API audit (read only)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/check-full-test-inventory.mjs'
+      - '.github/workflows/wheeling-test-full-inventory-audit.yml'
+permissions:
+  contents: read
+jobs:
+  audit-test-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Audit every TEST seat section without writing
+        run: node tools/check-full-test-inventory.mjs
