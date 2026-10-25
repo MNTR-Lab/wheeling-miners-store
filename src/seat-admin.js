@@ -13,6 +13,7 @@ import {handleSeatOrderRecovery} from './seat-order-recovery.js';
 import {handleTestRelease} from './seat-test-release.js';
 import {handleTestReservation} from './seat-test-reservation.js';
 import {handleReceiptVerification} from './seat-receipt-verification.js';
+import {handleReceiptQrAdmin} from './seat-receipt-qr.js';
 const HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
 const reply=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const SKU=/^WM-ST-\d{3}-[A-Z][A-Z0-9]{0,3}-\d{2,3}$/;
@@ -30,6 +31,7 @@ export async function handleSeatAdmin(request,env){
  if(!path.startsWith('/api/seats/admin/'))return null;
  if(!env.SEAT_DB)return reply({error:'Seat database unavailable'},503);
  if(!authorized(request,env))return reply({error:'Unauthorized'},401);
+ if(path.startsWith('/api/seats/admin/receipt-qr-'))return handleReceiptQrAdmin(request,env);
  if(path==='/api/seats/admin/receipt-lookup'||path==='/api/seats/admin/receipt-issue')return handleReceiptVerification(request,env);
  if(path==='/api/seats/admin/test-release')return handleTestRelease(request,env);
  if(path==='/api/seats/admin/test-reservation')return handleTestReservation(request,env);
