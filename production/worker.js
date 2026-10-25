@@ -73,6 +73,18 @@ export async function handleControlledReservation(request,env,{now=Date.now(),ra
 export default {async fetch(request,env,ctx){
  const path=new URL(request.url).pathname;
  if(env?.SEAT_PRODUCTION_CONTROLLED_TEST_ENABLED==='true'&&['/api/seats/hold','/api/seats/checkout'].includes(path))return reply({error:'PUBLIC_SALES_NOT_ENABLED'},423);
+ if(path==='/api/seats/admin/production-test-status'){
+  if(!authorized(request,env))return reply({error:'UNAUTHORIZED'},401);
+  if(request.method!=='GET')return reply({error:'METHOD_NOT_ALLOWED'},405);
+  if(env?.WM_ENVIRONMENT!=='PRODUCTION'||env.SHOPIFY_STORE_DOMAIN!==SHOP)return reply({error:'PRODUCTION_ONLY'},423);
+  const sku=env.SEAT_PRODUCTION_CONTROLLED_SKU;
+  if(!/^WM-ST-\d{3}-[A-Z][A-Z0-9]{0,3}-\d{2,3}$/.test(sku||''))return reply({error:'CONTROLLED_SEAT_NOT_CONFIGURED'},423);
+  const seat=await env.SEAT_DB.prepare('SELECT sku,status,price_cents,hold_id,hold_expires_at,shopify_order_id FROM seats WHERE sku=?').bind(sku).first();
+  if(!seat)return reply({error:'SEAT_NOT_FOUND'},404);
+  let reservation=null;
+  if(/^wm_control_[a-f0-9]{32}$/.test(env.SEAT_PRODUCTION_CONTROLLED_RESERVATION_ID||''))reservation=await env.SEAT_DB.prepare('SELECT id,status,expires_at,shopify_order_id FROM reservations WHERE id=?').bind(env.SEAT_PRODUCTION_CONTROLLED_RESERVATION_ID).first();
+  return reply({ok:true,seat,reservation,controlledWindowOpen:!!controlledTestConfig(env),publicSalesEnabled:false,readOnly:true});
+ }
  if(path==='/api/seats/webhooks/shopify')return handleControlledProductionWebhook(request,env);
  if(path==='/api/seats/admin/production-test-reservation')return handleControlledReservation(request,env);
  if(path==='/api/seats/admin/production-test-cart'){
