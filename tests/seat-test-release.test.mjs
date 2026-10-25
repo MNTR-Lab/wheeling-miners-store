@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateTestRelease,handleTestRelease} from '../src/seat-test-release.js';
+const env={WM_ENVIRONMENT:'TEST',SEAT_TEST_RELEASE_ENABLED:'true',SHOPIFY_STORE_DOMAIN:'wheeling-miners-ticket-testing.myshopify.com'};
+const sku='WM-ST-105-B-03';
+const body={sku,operator:'QA Operator',confirmation:`RELEASE TEST ${sku}`};
+test('valid isolated TEST release confirmation',()=>assert.equal(validateTestRelease(body,env).sku,sku));
+test('production always rejected',()=>assert.throws(()=>validateTestRelease(body,{...env,WM_ENVIRONMENT:'PRODUCTION'})));
+test('disabled unless explicitly enabled',()=>assert.throws(()=>validateTestRelease(body,{...env,SEAT_TEST_RELEASE_ENABLED:'false'})));
+test('SOLD fixtures protected',()=>assert.throws(()=>validateTestRelease({...body,sku:'WM-ST-105-B-02'},env)));
+test('confirmation must match SKU exactly',()=>assert.throws(()=>validateTestRelease({...body,confirmation:'yes'},env)));
+test('unexpected request fields rejected',()=>assert.throws(()=>validateTestRelease({...body,extra:true},env)));
+test('endpoint locked without explicit flag',async()=>{const r=await handleTestRelease(new Request('https://example.com',{method:'POST',body:JSON.stringify(body)}),{...env,SEAT_TEST_RELEASE_ENABLED:'false'});assert.equal(r.status,423)});
