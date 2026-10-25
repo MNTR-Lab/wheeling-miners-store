@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "wheeling-miners-store",
-  "main": "src/worker.js",
+  "main": "production/worker.js",
   "compatibility_date": "2026-10-22",
   "assets": {
     "directory": ".",
@@ -23,4 +23,3 @@
     "SEAT_SHOPIFY_AUTH_PROBE_ENABLED": "true"
   }
 }
-
