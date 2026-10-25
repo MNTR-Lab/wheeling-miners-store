@@ -1,0 +1,37 @@
+name: Wheeling isolated TEST cart (manual, explicit authorization)
+on:
+  workflow_dispatch:
+    inputs:
+      sku:
+        description: 'Approved isolated TEST seat SKU (not either SOLD fixture)'
+        required: true
+        type: string
+      confirmation:
+        description: 'Type CREATE TEST CART followed by the exact SKU'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: wheeling-isolated-test-cart
+  cancel-in-progress: false
+jobs:
+  create_test_cart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: wheeling-test-checkout
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate isolated cart orchestration
+        run: node --test tests/wm-controlled-checkout-run.test.mjs
+      - name: Create cart only on explicitly enabled TEST Worker
+        env:
+          WM_TEST_SKU: ${{ inputs.sku }}
+          WM_TEST_CONFIRMATION: ${{ inputs.confirmation }}
+          WM_TEST_SEAT_ADMIN_TOKEN: ${{ secrets.WM_TEST_SEAT_ADMIN_TOKEN }}
+          WM_ENVIRONMENT: TEST
+          SHOPIFY_STORE_DOMAIN: wheeling-miners-ticket-testing.myshopify.com
+        run: node scripts/wm-controlled-checkout-run.mjs
