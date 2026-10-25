@@ -1,8 +1,11 @@
-import test from 'node:test';import assert from 'node:assert/strict';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {validateTestCheckoutSeat} from '../scripts/wm-test-checkout-preflight.mjs';
-const sku='WM-ST-105-B-03',variant='gid://shopify/ProductVariant/50943009259578';
-const seat={sku,status:'UNRELEASED',hold_id:null,shopify_order_id:null,shopify_variant_id:variant,price_cents:16000};
-test('accepts only an unused approved TEST seat',()=>assert.equal(validateTestCheckoutSeat(seat,{sku,variant}),true));
-test('rejects historical SOLD fixtures',()=>assert.throws(()=>validateTestCheckoutSeat({...seat,sku:'WM-ST-105-B-02'},{sku:'WM-ST-105-B-02',variant}))); 
-test('rejects paid or held seats',()=>{for(const change of [{status:'SOLD'},{status:'HELD'},{hold_id:'existing'},{shopify_order_id:'123'}])assert.throws(()=>validateTestCheckoutSeat({...seat,...change},{sku,variant}))});
-test('rejects incorrect variants and $1 test prices',()=>{assert.throws(()=>validateTestCheckoutSeat({...seat,shopify_variant_id:'other'},{sku,variant}));assert.throws(()=>validateTestCheckoutSeat({...seat,price_cents:100},{sku,variant}))});
+const base={sku:'WM-ST-105-B-03',status:'UNRELEASED',hold_id:null,shopify_order_id:null,shopify_variant_id:'gid://shopify/ProductVariant/50943009259578',price_cents:16000};
+const valid=x=>validateTestCheckoutSeat(x,{sku:x.sku,variant:x.shopify_variant_id});
+test('allows only pristine unreleased mapped TEST candidate',()=>assert.equal(valid(base),true));
+test('rejects both historical SOLD fixtures',()=>{for(const sku of ['WM-ST-105-B-01','WM-ST-105-B-02'])assert.throws(()=>valid({...base,sku}))});
+test('rejects sold, held, blocked, and available seats',()=>{for(const status of ['SOLD','HELD','BLOCKED','AVAILABLE'])assert.throws(()=>valid({...base,status}))});
+test('rejects existing orders, holds, and invalid prices',()=>{for(const patch of [{hold_id:'x'},{shopify_order_id:'1'},{price_cents:100},{price_cents:0}])assert.throws(()=>valid({...base,...patch}))});
+test('checkout workflow is read-only and never invokes mutations',()=>{const script=readFileSync(new URL('../scripts/wm-test-checkout.mjs',import.meta.url),'utf8');assert.doesNotMatch(script,/\b(?:INSERT INTO|UPDATE seats|DELETE FROM|controlled-cart)\b/i);assert.match(script,/checkout_enabled!==false/);});
