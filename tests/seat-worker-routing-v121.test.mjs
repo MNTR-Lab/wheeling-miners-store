@@ -10,11 +10,11 @@ const secret='worker-routing-test-secret';
 const order={id:123,line_items:[{sku:'WM-ST-105-B-06',variant_id:456,quantity:1}],note_attributes:[{name:'wm_reservation_id',value:'reservation_123456789'},{name:'wm_checkout_nonce',value:'nonce_1234567890123456789012'}]};
 function signed(body=order){
  const raw=JSON.stringify(body);
- return new Request('https://example.test/api/seats/webhooks/shopify',{method:'POST',headers:{'x-shopify-topic':'orders/paid','x-shopify-hmac-sha256':createHmac('sha256',secret).update(raw).digest('base64')},body:raw});
+ return new Request('https://example.test/api/seats/webhooks/shopify',{method:'POST',headers:{'x-shopify-topic':'orders/paid','x-shopify-shop-domain':'wheeling-miners-ticket-testing.myshopify.com','x-shopify-shop-domain':'wheeling-miners-ticket-testing.myshopify.com','x-shopify-shop-domain':'wheeling-miners-ticket-testing.myshopify.com','x-shopify-shop-domain':'wheeling-miners-ticket-testing.myshopify.com','x-shopify-hmac-sha256':createHmac('sha256',secret).update(raw).digest('base64')},body:raw});
 }
 function environment(){
  const sql=[];
- return {sql,env:{SHOPIFY_WEBHOOK_SECRET:secret,SEAT_DB:{prepare(query){sql.push(query);if(!/^SELECT\s/i.test(query))throw Error('WRITE_FORBIDDEN');return {bind(){return {first:async()=>null,all:async()=>({results:[]})}}}},batch(){throw Error('BATCH_FORBIDDEN')}},ASSETS:{fetch(){throw Error('ASSET_ROUTE_FORBIDDEN')}}}};
+ return {sql,env:{WM_ENVIRONMENT:'TEST',SHOPIFY_STORE_DOMAIN:'wheeling-miners-ticket-testing.myshopify.com',SHOPIFY_WEBHOOK_SECRET:secret,SEAT_DB:{prepare(query){sql.push(query);if(!/^SELECT\s/i.test(query))throw Error('WRITE_FORBIDDEN');return {bind(){return {first:async()=>null,all:async()=>({results:[]})}}}},batch(){throw Error('BATCH_FORBIDDEN')}},ASSETS:{fetch(){throw Error('ASSET_ROUTE_FORBIDDEN')}}}};
 }
 test('deployed webhook route uses default-off guarded handler',async()=>{
  const {env,sql}=environment();const response=await worker.fetch(signed(),env);

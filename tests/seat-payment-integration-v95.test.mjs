@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac,webcrypto} from 'node:crypto';
-import {handleShopifyPaidWebhook} from '../src/seat-shopify-webhook.js';
+import {handleShopifyPaidWebhook} from './helpers/verified-shopify-webhook-fixture.mjs';
 if (!globalThis.crypto) globalThis.crypto=webcrypto;
 const secret='v95-integration-test-secret';
 const rid='reservation_123456789';
