@@ -1,0 +1,23 @@
+name: Wheeling TEST admin reporting schema compatibility
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/seat-catalog-audit.js'
+      - 'src/seat-mapping-report.js'
+      - 'src/seat-variant-manifest.js'
+      - 'tests/admin-readiness-schema.test.mjs'
+      - '.github/workflows/wheeling-test-admin-readiness.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify admin reporting and variant manifest without writes
+        run: node --test tests/admin-readiness-schema.test.mjs
