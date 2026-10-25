@@ -1,10 +1,1 @@
-Wheeling Miners — isolated test Worker deployment
-
-Commit .github/workflows/wheeling-test-worker-deploy.yml into the same path in the repository.
-Then GitHub > Actions > Wheeling TEST Worker deployment > Run workflow.
-
-The workflow checks that the test schema exists BEFORE deploying. If the schema setup was not run, it stops safely.
-The test Worker is separate from production, uses the test D1 database, and keeps checkout disabled.
-No Shopify secrets are added and no test payment is attempted.
-
-If GitHub Actions reports a missing Cloudflare token or D1 schema, do not run production deployment workflows to fix it.
+COMMIT all three included files to the Wheeling Miners repository preserving paths. The workflow runs automatically. It checks an OFFLINE proposed TEST migration with SQLite and does NOT apply it to any Cloudflare database. DO NOT run the SQL manually. The two existing sold seats are intentionally excluded and preserved. The 3735 imported seats would remain UNRELEASED. A separately reviewed, guarded TEST-only migration workflow will be required before applying.
