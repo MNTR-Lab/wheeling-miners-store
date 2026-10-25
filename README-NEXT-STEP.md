@@ -1,18 +1,19 @@
-# Wheeling Miners — Receipt Verification Phase 1
+# Wheeling Miners receipt verification — Phase 2 staff interface
 
-## Included
-- `src/seat-receipt-verification.js`: staff-only paid-order lookup and one-time ticket issuance, with duplicate issuance blocked.
-- `migrations/001-seat-ticket-issuance.sql`: TEST-only tables to record physical ticket handoff and audit trail.
-- `src/seat-admin.js`: complete replacement, integrating two routes behind existing bearer-token authorization.
+This package adds only `receipt-verification.html` to the repository root. It does not change checkout, Shopify products, Workers, inventory, or database state.
 
-## What to do
-1. Upload the ZIP's `src/` files into the GitHub repository, preserving paths; commit.
-2. **Do not run the SQL yourself yet.** The migration must be applied to the TEST D1 database `2a06b7a7-e833-4a01-8667-2f6388dc0ee0` before exercising issuance endpoints. Never run it against production `221e3797-3ea2-477d-9a7f-7dfded620547`.
-3. The new endpoints are `GET /api/seats/admin/receipt-lookup?order_id=...` and `POST /api/seats/admin/receipt-issue`. Both require existing `SEAT_ADMIN_TOKEN` authentication.
+## Install
+Upload `receipt-verification.html` to the repository root, then commit. On the TEST Worker static assets deployment, open `/receipt-verification.html`.
 
-## Not yet implemented
-- QR code creation and delivery to purchaser.
-- A staff-facing browser page with secure sign-in.
-- Production enablement.
+## Requirements before using the issuance button
+1. Phase 1 code must be deployed on the TEST Worker.
+2. `migrations/001-seat-ticket-issuance.sql` must be applied to the TEST D1 database only. Do NOT run on production.
+3. Authorized staff need the existing `SEAT_ADMIN_TOKEN` to call protected APIs.
+4. Staff must independently confirm the customer's receipt/identity. A numeric Shopify order ID alone does NOT prove the presenter owns the order.
 
-The new lookup confirms the order's SOLD status from the existing verified Shopify paid webhook, not by trusting a customer-provided receipt. Never treat an arbitrary order number as proof of ownership.
+## Limits
+- This is a staff-facing lookup and handoff screen, NOT a public QR generator or buyer delivery integration.
+- Staff token is kept in tab memory only, not browser storage.
+- The issuance action is irreversible in this phase; supervisor reversal workflow should be designed separately.
+- Never publish staff admin token in HTML, GitHub, QR code, or screenshots.
+- Production public sales remain disabled.
