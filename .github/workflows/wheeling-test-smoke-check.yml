@@ -1,0 +1,54 @@
+name: Wheeling TEST payment safety smoke checks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Verify TEST routing, HMAC rejection, and paid seat persistence
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          const base='https://wheeling-miners-store-test.bikard.workers.dev';
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          assert.equal(account,'0b83177a971bd8fcfad88ed4e531eb50','Wrong account');
+          assert.ok(token,'Missing Cloudflare TEST API token');
+          async function json(res){const body=await res.json();return {status:res.status,body};}
+          const status=await json(await fetch(base+'/api/seats/status'));
+          assert.equal(status.status,200);
+          assert.equal(status.body.checkout_enabled,false);
+          assert.equal(status.body.holds_enabled,false);
+          console.log('PASS public checkout remains locked');
+          for(const path of ['/api/seats/hold','/api/seats/checkout']){
+            const result=await json(await fetch(base+path,{method:'POST',headers:{'content-type':'application/json'},body:'{}'}));
+            assert.equal(result.status,423,path+' must remain locked');
+          }
+          console.log('PASS public hold and checkout POSTs rejected');
+          const webhook=base+'/api/seats/webhooks/shopify';
+          const unsigned=await json(await fetch(webhook,{method:'POST',headers:{'content-type':'application/json','x-shopify-topic':'orders/paid','x-shopify-shop-domain':'wheeling-miners-ticket-testing.myshopify.com'},body:JSON.stringify({id:18970068058169,line_items:[]})}));
+          assert.equal(unsigned.status,401,'Unsigned paid webhook must be rejected');
+          assert.equal(unsigned.body.error,'INVALID_SIGNATURE');
+          const fake=await json(await fetch(webhook,{method:'POST',headers:{'content-type':'application/json','x-shopify-topic':'orders/paid','x-shopify-hmac-sha256':'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=','x-shopify-shop-domain':'wheeling-miners-ticket-testing.myshopify.com'},body:'{}'}));
+          assert.equal(fake.status,401,'Fake signed webhook must be rejected');
+          console.log('PASS unsigned and invalid-HMAC webhooks rejected');
+          const db='2a06b7a7-e833-4a01-8667-2f6388dc0ee0';
+          const query=await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${db}/query`,{
+            method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
+            body:JSON.stringify({sql:"SELECT sku,status,shopify_order_id FROM seats WHERE sku='WM-ST-105-B-02'"})
+          });
+          const data=await query.json();
+          assert.equal(query.ok,true,'TEST D1 query failed');
+          assert.equal(data.success,true);
+          const row=data.result?.[0]?.results?.[0];
+          assert.equal(row?.status,'SOLD');
+          assert.equal(String(row?.shopify_order_id),'18970068058169');
+          console.log('PASS paid order #1002 seat remains SOLD and linked');
+          console.log('SMOKE CHECKS PASSED. No purchases or database writes performed.');
+          JS
