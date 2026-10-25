@@ -1,0 +1,21 @@
+name: Wheeling verify paid order 1002 (Shopify + TEST D1, read-only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify test Shopify payment, seat, variant, reservation and nonce
+        env:
+          CLOUDFLARE_TEST_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WM_SHOPIFY_CLIENT_ID: ${{ secrets.WM_SHOPIFY_CLIENT_ID }}
+          WM_SHOPIFY_CLIENT_SECRET: ${{ secrets.WM_SHOPIFY_CLIENT_SECRET }}
+        run: node scripts/wm-verify-order-1002.mjs
