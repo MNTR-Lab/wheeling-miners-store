@@ -2,9 +2,9 @@
 import assert from 'node:assert/strict';
 const base='https://wheeling-miners-store-test.bikard.workers.dev';
 async function get(path, options={}) {
-  const response=await fetch(base+path,{redirect:'error',signal:AbortSignal.timeout(20000),...options});
+  const response=await fetch(base+path,{redirect:'manual',signal:AbortSignal.timeout(20000),...options});
   const raw=await response.text();let body;try{body=JSON.parse(raw)}catch{body=raw}
-  return {status:response.status,body};
+  return {status:response.status,body,location:response.headers.get('location')};
 }
 const status=await get('/api/seats/status');
 assert.equal(status.status,200,JSON.stringify(status));
@@ -39,7 +39,26 @@ for(const path of ['/api/seats/hold','/api/seats/checkout']){
 }
 const admin=await get('/api/seats/admin/summary');
 assert.equal(admin.status,401,'Admin must require authentication');
-const selector=await get('/seat-selector.html');
-assert.equal(selector.status,200);
-assert.match(selector.body,/<html/i);
+// Cloudflare static assets can canonicalize .html paths via same-origin redirects.
+// Follow at most two SAME-ORIGIN redirects, never redirect API requests.
+let url=new URL('/seat-selector.html',base);
+let selector;
+for(let i=0;i<3;i++){
+  const r=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(20000)});
+  if([301,302,303,307,308].includes(r.status)){
+    assert.ok(i<2,'Unexpected static redirect chain');
+    const location=r.headers.get('location');
+    assert.ok(location,'Static redirect missing location');
+    const next=new URL(location,url);
+    assert.equal(next.origin,new URL(base).origin,'Cross-origin redirect not allowed');
+    assert.ok(['/seat-selector','/seat-selector.html','/season-tickets','/season-tickets.html'].includes(next.pathname),'Unexpected static redirect target');
+    url=next;
+    continue;
+  }
+  assert.equal(r.status,200,'Seat selector must be available');
+  assert.match(await r.text(),/<html/i);
+  selector=true;
+  break;
+}
+assert.equal(selector,true,'Seat selector not reachable');
 console.log('PASS: TEST Worker deployed; 3,737 seats, 63 sections, 3 SOLD fixtures, public checkout locked, admin protected.');
