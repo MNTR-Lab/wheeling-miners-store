@@ -1,13 +1,22 @@
-# Wheeling Miners — Customer Checkout UI (fail-closed)
+# Production paid-webhook activation guard (preparatory update)
 
-Copy the included `season-tickets.html`, `src/seat-public-inventory.js`, `src/worker.js`, and `tests/seat-public-inventory.test.mjs` to the corresponding paths in the repository. **Replace `src/worker.js` in full.** Keep the existing `src/seat-public-checkout.js` and all other files.
+This commit introduces a standalone, fail-closed authorization module and tests.
+It intentionally does **not** modify `src/seat-shopify-webhook.js` or activate production payment fulfillment.
 
-This adds a customer-facing page at `/season-tickets.html`, public read-only inventory endpoints, and tests. In TEST, public sales remain closed and no public D1 seat inventory is returned. Production sales remain disabled unless separately and explicitly approved via production Worker configuration, verified catalog/inventory, and operational sign-off.
+Production paid-order commits must require:
+- `WM_ENVIRONMENT=PRODUCTION`
+- A valid production `SHOPIFY_STORE_DOMAIN` (not the TEST store)
+- `SEAT_PAID_FULFILLMENT_ENABLED=true`
+- `SEAT_PRODUCTION_PAID_COMMIT_APPROVED=true`
+- `SEAT_PUBLIC_SALES_APPROVED=true`
 
-Test locally (from your fresh clone):
+These flags must not be enabled until production inventory, Shopify webhooks,
+refund handling, and expiration/late-payment recovery have been verified.
 
-`node --test tests/seat-public-inventory.test.mjs tests/seat-public-checkout.test.mjs`
+Next integration step: replace the webhook's hard-coded TEST store with a validated
+store selected by `paidWebhookStore(env)` and use `paidWebhookCommitEnabled(env,orderId)`
+for the commit gate. Ensure all Shopify Admin API requests and the signed shop header
+use the validated store. Add integration tests for rejected cross-store signatures,
+late paid transactions, replay, and duplicate fulfillment before activation.
 
-Do **not** enable sales flags or publish production inventory as part of this commit. This is not a launch authorization.
-
-**Important limitation:** A 15-minute D1 hold is not by itself sufficient to guarantee checkout completion within that period. Shopify carts are separate from D1 inventory and may remain payable after a hold expires. Before launch, the payment/hold expiry reconciliation and refund/oversell procedure require end-to-end validation. This page is not the final approval to accept real orders.
+Run: `node --test tests/seat-webhook-environment.test.mjs`
