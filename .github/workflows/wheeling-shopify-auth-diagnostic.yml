@@ -1,0 +1,19 @@
+name: Wheeling Shopify TEST authentication diagnostic (read-only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Diagnose Shopify TEST token exchange without exposing secrets
+        env:
+          WM_SHOPIFY_CLIENT_ID: ${{ secrets.WM_SHOPIFY_CLIENT_ID }}
+          WM_SHOPIFY_CLIENT_SECRET: ${{ secrets.WM_SHOPIFY_CLIENT_SECRET }}
+        run: node scripts/wm-shopify-auth-diagnostic.mjs
