@@ -1,22 +1,20 @@
-# Wheeling Miners — QR receipt safety update (TEST only)
+# Wheeling Miners — Public checkout candidate (DISABLED)
 
-Replace the **entire** `src/seat-receipt-qr.js` in the GitHub repository with the included file. No other files, migrations, or secrets change.
+This package is intentionally **not enabled**. It adds two server-side routes behind strict flags, using existing D1 atomic reservation and Shopify cart functions. It does not publish Shopify products, release seats, or modify production data.
 
-## What changes
+## Files
+- `src/seat-public-checkout.js` (new)
+- `tests/seat-public-checkout.test.mjs` (new)
+- `src/worker.js` (complete replacement)
 
-- Makes QR creation atomic: two concurrent staff requests cannot silently replace each other's active QR receipt.
-- Permits QR revocation even if the order is later refunded or seats are under reconciliation.
-- Requires SOLD seats before staff resolve returns an order ID, not just possession of a valid QR.
-- Applies no-store/private, no-referrer, and nosniff headers to receipt API responses.
-- Limits incoming JSON bodies by UTF-8 byte length, and validates JSON objects.
-- Preserves existing endpoint paths and response shapes for the existing receipt admin and customer pages.
+## Before any production enablement
+- Independently verify production D1 migrations and backup, 3,737 seats and 63 sections, Shopify variant mappings, prices and seat inventory.
+- Validate concurrent reservations, abandoned checkout expiry and cleanup, paid webhook, refunds, cancelled orders, ticket pickup and customer support.
+- Implement and verify public checkout abuse/rate limits, expiry recovery, and Shopify inventory parity; test under isolated staging configuration.
+- Obtain explicit team approval and authorization for production release.
+- Only then configure `WM_ENVIRONMENT=PRODUCTION`, `SEAT_PUBLIC_SALES_ENABLED=true`, `SEAT_PUBLIC_SALES_APPROVED=true`, `SEAT_CONTROLLED_CART_ENABLED=true`, and the **correct approved production** Shopify domain and secrets. Do not set any of these now.
 
-## Deployment
+The public checkout candidate is NOT launch-ready. These routes are a guarded foundation, not approval to sell.
 
-After committing the full replacement file, deploy the latest commit to the **TEST Worker only**:
-
-```sh
-cd ~/Downloads/wheeling-miners-latest && git pull origin main && npx wrangler deploy --config wrangler.test.jsonc
-```
-
-Do not run a migration. Do not deploy to production. Do not redo the $1 paid checkout test.
+## Tests
+`node --test tests/seat-public-checkout.test.mjs`
