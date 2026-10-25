@@ -19,7 +19,7 @@ jobs:
           const c=JSON.parse(readFileSync('wrangler.test.jsonc','utf8'));
           if(c.name!=='wheeling-miners-store-test'||c.main!=='src/worker.js')throw Error('Wrong worker');
           if(c.vars?.WM_ENVIRONMENT!=='TEST'||c.vars?.SHOPIFY_STORE_DOMAIN!=='wheeling-miners-ticket-testing.myshopify.com'||c.vars?.SEAT_CONTROLLED_CART_ENABLED!=='true')throw Error('Wrong TEST vars');
-          if(c.vars?.SEAT_PAID_FULFILLMENT_ENABLED==='true')throw Error('Fulfillment enabled');
+          if(c.vars?.SEAT_PAID_FULFILLMENT_ENABLED!=='true'||c.vars?.SEAT_TEST_PAID_ORDER_ID!=='18970068058169')throw Error('Recovery allowlist missing or invalid');
           if(c.d1_databases?.length!==1||c.d1_databases[0].binding!=='SEAT_DB'||c.d1_databases[0].database_name!=='wheeling-miners-seats-test'||c.d1_databases[0].database_id!=='2a06b7a7-e833-4a01-8667-2f6388dc0ee0')throw Error('Wrong D1');
           JS
       - name: Check TEST database
