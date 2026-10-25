@@ -32,10 +32,10 @@ console.log('PASS: no production reservations');
 const [badVariants] = await query("SELECT COUNT(*) AS n FROM seats WHERE shopify_variant_id NOT GLOB 'gid://shopify/ProductVariant/[1-9]*' OR shopify_variant_id IS NULL");
 assert(badVariants.n===0, 'Malformed Shopify variant GIDs');
 console.log('PASS: variant IDs have Shopify GID format');
-const base = process.env.WM_PRODUCTION_WORKER_URL;
+const base = process.env.WM_PRODUCTION_WORKER_URL || 'https://wheeling-miners-store.bikard.workers.dev';
 if (base) {
   const origin = new URL(base);
-  assert(origin.protocol==='https:' && origin.pathname==='/' && !origin.search && !origin.hash, 'Invalid production Worker URL');
+  assert(base==='https://wheeling-miners-store.bikard.workers.dev'||base==='https://wheeling-miners-store.bikard.workers.dev/', 'Invalid production Worker URL');
   async function check(path,method='GET') {
     const response = await fetch(new URL(path,origin), {method,headers:method==='POST'?{'content-type':'application/json'}:{},body:method==='POST'?'{}':undefined});
     return {status:response.status, body:await response.json()};
@@ -47,8 +47,6 @@ if (base) {
     assert(result.status===423, `${path} is not locked (${result.status})`);
   }
   console.log('PASS: deployed production Worker public hold and checkout endpoints locked');
-} else {
-  console.log('NOTICE: WM_PRODUCTION_WORKER_URL not configured; live endpoint lock checks skipped');
 }
 console.log('PASS: read-only D1 production inventory checks complete');
 console.log('NOT VERIFIED: Shopify Admin product existence, actual Shopify prices, active webhook subscription, or Worker runtime secrets');
