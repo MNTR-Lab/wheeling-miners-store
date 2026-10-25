@@ -1,18 +1,24 @@
-/** Read-only catalog audit using only columns present in live TEST D1. */
+/** Read-only catalog audit using only columns present in TEST D1.
+ * SOLD tickets are immutable historical records, not seats available for release.
+ */
 const H={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
 const reply=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:H});
 export function auditSection(row){
  const issues=[];
- if(!/^\d{3}$/.test(String(row.section)))issues.push('INVALID_SECTION');
+ const section=String(row.section);
+ if(!/^\d{3}$/.test(section))issues.push('INVALID_SECTION');
  if(Number(row.seats)<1||Number(row.seats)>2048)issues.push('VARIANT_LIMIT');
- if(Number(row.price_tiers)!==1){
-  // The two previously sold $1 TEST tickets are intentional fixtures, not catalog prices.
-  if(!(String(row.section)==='105'&&Number(row.sold_test_fixtures)===2&&Number(row.price_tiers)===2))issues.push('PRICE_TIER_CONFLICT');
- }
+ const fixtureCount=Number(row.sold_test_fixtures||0);
+ const priceTiers=Number(row.price_tiers);
+ // Only section 105 contains two verified historical $1 test sales.
+ if(priceTiers!==1&&!(section==='105'&&fixtureCount===2&&priceTiers===2))issues.push('PRICE_TIER_CONFLICT');
  if(Number(row.invalid_skus)>0)issues.push('INVALID_SEAT_SKUS');
  if(Number(row.mapped)>0&&Number(row.mapped)!==Number(row.seats))issues.push('PARTIAL_MAPPING');
+ // AVAILABLE/HELD seats are not staged. SOLD records must never be treated as release candidates.
  if(Number(row.active)>0)issues.push('SEATS_NOT_STAGED');
- return {section:row.section,seats:row.seats,section_product_sku:'WM-ST-SEC-'+row.section,price_cents:row.price_cents,mapped:row.mapped,sold_test_fixtures:row.sold_test_fixtures||0,issues,ready_for_draft_variant_creation:issues.length===0&&Number(row.mapped)===0};
+ if(Number(row.sold||0)!==fixtureCount)issues.push('UNEXPECTED_SOLD_SEATS');
+ if(fixtureCount>0&&section!=='105')issues.push('UNEXPECTED_TEST_FIXTURES');
+ return {section,seats:row.seats,section_product_sku:'WM-ST-SEC-'+section,price_cents:row.price_cents,mapped:row.mapped,sold:row.sold||0,sold_test_fixtures:fixtureCount,issues,ready_for_draft_variant_creation:issues.length===0&&Number(row.mapped)===0};
 }
 export async function seatCatalogAudit(request,env){
  if(request.method!=='GET')return reply({error:'Method not allowed'},405);
@@ -21,7 +27,8 @@ export async function seatCatalogAudit(request,env){
  COUNT(DISTINCT price_cents) AS price_tiers,
  SUM(CASE WHEN sku NOT GLOB 'WM-ST-[0-9][0-9][0-9]-*' THEN 1 ELSE 0 END) AS invalid_skus,
  SUM(CASE WHEN shopify_variant_id IS NOT NULL AND TRIM(shopify_variant_id)<>'' THEN 1 ELSE 0 END) AS mapped,
- SUM(CASE WHEN status NOT IN ('UNRELEASED','BLOCKED') THEN 1 ELSE 0 END) AS active,
+ SUM(CASE WHEN status IN ('AVAILABLE','HELD') THEN 1 ELSE 0 END) AS active,
+ SUM(CASE WHEN status='SOLD' THEN 1 ELSE 0 END) AS sold,
  SUM(CASE WHEN status='SOLD' AND price_cents=100 AND sku IN ('WM-ST-105-B-01','WM-ST-105-B-02') THEN 1 ELSE 0 END) AS sold_test_fixtures
  FROM seats GROUP BY section ORDER BY section`).all();
  const sections=result.results.map(auditSection);
