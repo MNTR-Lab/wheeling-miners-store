@@ -1,4 +1,6 @@
-/** V112: strict read-only Shopify/D1 reservation ownership validation; never enables sales. */
+/** Checkout ownership validation. Expired holds may only be committed by a signed
+ * Shopify orders/paid webhook when Shopify's paid_at is within the hold window.
+ * All other callers retain strict current-time expiry checks. */
 import {parsePaidSeatOrder} from './seat-paid-order.js';
 import {expiryMilliseconds} from './seat-expiry.js';
 const RID=/^[A-Za-z0-9_-]{16,128}$/;
@@ -16,8 +18,7 @@ function checkoutAttributes(order){
  }
  return out;
 }
-/** reservation and reservationSeats must originate from trusted D1 reads. */
-export function verifyCheckoutOwnership(order,reservation,reservationSeats,{now=new Date()}={}){
+export function verifyCheckoutOwnership(order,reservation,reservationSeats,{now=new Date(),verifiedPaidWebhook=false}={}){
  const parsed=parsePaidSeatOrder(order);
  if(parsed.ignored)fail('NO_ASSIGNED_SEATS');
  if(!reservation||typeof reservation.id!=='string'||!RID.test(reservation.id))fail('INVALID_RESERVATION');
@@ -46,6 +47,19 @@ export function verifyCheckoutOwnership(order,reservation,reservationSeats,{now=
  if(!(now instanceof Date)||!Number.isFinite(now.valueOf()))fail('INVALID_CLOCK');
  let expiry;
  try{expiry=expiryMilliseconds(reservation.expires_at)}catch{fail('MISSING_EXPIRY')}
- if(expiry<now.getTime()&&reservation.status!=='CONFIRMED')fail('EXPIRED_RESERVATION');
+ if(expiry<now.getTime()&&reservation.status!=='CONFIRMED'){
+  // No general expiry bypass: only a caller that has already validated Shopify's
+  // HMAC for the exact orders/paid payload may use the signed paid_at timestamp.
+  if(verifiedPaidWebhook!==true)fail('EXPIRED_RESERVATION');
+  if(typeof order.paid_at!=='string'||!/^\d{4}-\d\d-\d\dT/.test(order.paid_at))fail('PAID_TIMESTAMP_MISSING');
+  const paidAt=Date.parse(order.paid_at);
+  if(!Number.isFinite(paidAt)||paidAt>expiry||paidAt>now.getTime()+60000)fail('PAYMENT_AFTER_RESERVATION_EXPIRY');
+  let created;
+  try{created=expiryMilliseconds(reservation.created_at)}catch{
+   if(typeof reservation.created_at==='number'&&Number.isSafeInteger(reservation.created_at))created=reservation.created_at;
+   else fail('RESERVATION_CREATED_AT_INVALID');
+  }
+  if(paidAt<created)fail('PAYMENT_BEFORE_RESERVATION');
+ }
  return {confirmedOwnership:true,reservationId:reservation.id,orderId:parsed.orderId,seatCount:parsed.seats.length};
 }

@@ -1,6 +1,6 @@
-/** V107: signed Shopify paid-order intake with explicit, default-OFF fulfillment gate.
- * Never set SEAT_PAID_FULFILLMENT_ENABLED before production schema, checkout,
- * mapping, and paid-order replay testing have been independently approved.
+/** Signed Shopify paid-order intake; fulfillment remains DEFAULT OFF.
+ * TEST can be restricted to exactly order #1002 by SEAT_TEST_PAID_ORDER_ID.
+ * No new OAuth connection is used: Shopify HMAC verifies the existing webhook.
  */
 import {parsePaidSeatOrder} from './seat-paid-order.js';
 import {previewPaidCommit} from './seat-paid-commit-preview.js';
@@ -11,7 +11,7 @@ const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:
 const MAX=1024*1024;
 const RID=/^[A-Za-z0-9_-]{16,128}$/;
 const fail=code=>{throw Error(code)};
-export async function loadPaidCommitPlan(order,db){
+export async function loadPaidCommitPlan(order,db,{verifiedPaidWebhook=false}={}){
  const parsed=parsePaidSeatOrder(order);
  if(parsed.ignored)return {ignored:true};
  const attrs=order.note_attributes;
@@ -25,7 +25,7 @@ export async function loadPaidCommitPlan(order,db){
  const seats=await db.prepare(`SELECT sku,status,shopify_variant_id,shopify_order_id,hold_id,hold_expires_at FROM seats WHERE sku IN (${skus.map(()=>'?').join(',')})`).bind(...skus).all();
  if(!Array.isArray(linked?.results)||linked.results.length!==skus.length||!Array.isArray(seats?.results)||seats.results.length!==skus.length)fail('SEAT_COUNT_MISMATCH');
  const reservationSeats=linked.results.map(x=>({sku:x.seat_sku??x.sku,shopify_variant_id:x.shopify_variant_id}));
- return preparePaidCommit(order,reservation,reservationSeats,seats.results);
+ return preparePaidCommit(order,reservation,reservationSeats,seats.results,{verifiedPaidWebhook});
 }
 export async function handleShopifyPaidWebhook(request,env){
  if(request.method!=='POST')return json({error:'METHOD_NOT_ALLOWED'},405);
@@ -39,22 +39,22 @@ export async function handleShopifyPaidWebhook(request,env){
  let order;try{order=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));}catch{return json({error:'INVALID_JSON'},400)}
  let parsed;try{parsed=parsePaidSeatOrder(order)}catch{return json({error:'INVALID_SEAT_ORDER',requires_reconciliation:true},422)}
  if(parsed.ignored)return json({ok:true,ignored:true,reason:'NO_ASSIGNED_SEATS'});
- // Default-off gate MUST run before any database write. A paid seat order
- // receives a retryable response until operators explicitly approve fulfillment.
  if(env.SEAT_PAID_FULFILLMENT_ENABLED!=='true'){
   let inspection;try{inspection=await previewPaidCommit(order,env.SEAT_DB)}catch{inspection={reason:'RECONCILIATION_UNAVAILABLE'}}
   return json({error:'MANUAL_RECONCILIATION_REQUIRED',staging:true,requires_reconciliation:true,inspection},503);
  }
- // Even when explicitly enabled, reject unsigned, mismatched, expired,
- // or competing claims before constructing any write transaction.
+ // Never permit a broad paid-fulfillment flag in this temporary reconciliation
+ // mode. The one-order allowlist is available only on the isolated TEST Worker.
+ if(env.WM_ENVIRONMENT!=='TEST'||env.SHOPIFY_STORE_DOMAIN!=='wheeling-miners-ticket-testing.myshopify.com'||env.SEAT_TEST_PAID_ORDER_ID!=='18970068058169'||parsed.orderId!==env.SEAT_TEST_PAID_ORDER_ID)
+  return json({error:'TEST_ORDER_ALLOWLIST_REQUIRED',requires_reconciliation:true},503);
  if(!env.SEAT_DB.batch)return json({error:'DATABASE_TRANSACTION_UNAVAILABLE',requires_reconciliation:true},503);
  try{
-  const plan=await loadPaidCommitPlan(order,env.SEAT_DB);
+  const plan=await loadPaidCommitPlan(order,env.SEAT_DB,{verifiedPaidWebhook:true});
   if(plan.ignored)return json({ok:true,ignored:true});
   const result=await executePaidCommit(env.SEAT_DB,plan,{signatureVerified:true});
   return json({ok:true,order_id:plan.orderId,seat_count:result.seatCount,replayed:!!result.replayed});
- }catch{
-  // Shopify retries on 503; never acknowledge a partial or unverified payment.
+ }catch(e){
+  console.error('Paid seat commit rejected:',e?.message??'UNKNOWN');
   return json({error:'PAID_SEAT_COMMIT_FAILED',requires_reconciliation:true},503);
  }
 }

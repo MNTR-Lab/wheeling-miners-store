@@ -1,4 +1,4 @@
-/** V111: staging-only atomic paid-seat commit. Never enables checkout. */
+/** Atomic paid-seat commit. All writes guarded by seat ownership and D1 batch. */
 import {prepareFulfillment} from './seat-fulfillment-transaction.js';
 import {verifyCheckoutOwnership} from './seat-checkout-linkage.js';
 const fail=code=>{throw Error(code)};
@@ -6,8 +6,8 @@ const CLEAR='DELETE FROM seat_admin_guard WHERE id=1';
 const GUARD='INSERT INTO seat_admin_guard (id,valid) VALUES (1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)';
 const SEAT_UPDATE="UPDATE seats SET status='SOLD',shopify_order_id=?,hold_id=NULL,hold_expires_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE sku=? AND status='HELD' AND hold_id=? AND shopify_order_id IS NULL AND shopify_variant_id=?";
 const RES_UPDATE="UPDATE reservations SET status='CONFIRMED',shopify_order_id=? WHERE id=? AND status IN ('HELD','CHECKOUT_PENDING') AND shopify_order_id IS NULL";
-export function preparePaidCommit(order,reservation,reservationSeats,seatRows,{now=new Date()}={}){
- const ownership=verifyCheckoutOwnership(order,reservation,reservationSeats,{now});
+export function preparePaidCommit(order,reservation,reservationSeats,seatRows,{now=new Date(),verifiedPaidWebhook=false}={}){
+ const ownership=verifyCheckoutOwnership(order,reservation,reservationSeats,{now,verifiedPaidWebhook});
  const plan=prepareFulfillment(order,reservation,seatRows);
  if(plan.replayed)return {replayed:true,orderId:plan.orderId,reservationId:ownership.reservationId,seatCount:plan.seatCount,operations:[]};
  if(plan.operations.length!==ownership.seatCount)fail('SEAT_COUNT_MISMATCH');
