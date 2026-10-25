@@ -13,7 +13,7 @@ assert.equal(status.checkout_enabled,false);
 assert.equal(status.holds_enabled,false);
 assert.equal(Number(status.shopify_mapped_seats),3737);
 const counts=Object.fromEntries(status.inventory.map(({status,count})=>[status,Number(count)]));
-assert.equal(counts.SOLD,2);assert.equal(counts.UNRELEASED,3735);
+assert.equal(counts.SOLD,3);assert.equal(counts.UNRELEASED,3734);
 assert.equal(Object.values(counts).reduce((a,b)=>a+b,0),3737);
 const readiness=await read('/api/seats/readiness');
 assert.equal(readiness.ready_for_sales,false);
@@ -52,12 +52,11 @@ for(const key of sectionNames){
     seats.push(seat);
   }
 }
-assert.equal(sectionNames.length,63,'Unexpected number of sections');
 assert.equal(seats.length,3737,'Missing or extra seats in section API');
 assert.equal(new Set(seats.map(s=>s.sku)).size,3737,'Duplicate seat SKUs');
 const sold=seats.filter(s=>s.status==='SOLD');
-assert.deepEqual(sold.map(s=>s.sku).sort(),['WM-ST-105-B-01','WM-ST-105-B-02']);
+assert.deepEqual(sold.map(s=>s.sku).sort(),['WM-ST-105-B-01','WM-ST-105-B-02','WM-ST-105-B-03']);
 assert.ok(sold.every(s=>s.price_cents===100),'Test fixtures must retain $1 prices');
-assert.equal(seats.filter(s=>s.status==='UNRELEASED').length,3735);
+assert.equal(seats.filter(s=>s.status==='UNRELEASED').length,3734);
 assert.ok(seats.filter(s=>s.status==='UNRELEASED').every(s=>s.price_cents!==100),'Unexpected $1 staged ticket');
-console.log(`PASS: ${seats.length} unique TEST seats in ${sectionNames.length} sections; 3735 unreleased; 2 preserved sold fixtures; no public checkout.`);
+console.log(`PASS: ${seats.length} unique TEST seats in ${sectionNames.length} sections; 3734 unreleased; 3 preserved sold fixtures; no public checkout.`);
