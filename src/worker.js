@@ -3,7 +3,8 @@ import { handleSeatAdmin } from './seat-admin.js';
 import { handleShopifyPaidWebhook } from './seat-shopify-webhook.js';
 import { handleReceiptQrPublic } from './seat-receipt-qr.js';
 import { handlePublicCheckout } from './seat-public-checkout.js';
-/** Public checkout is fail-closed and cannot activate in TEST. */
+import { handlePublicInventory } from './seat-public-inventory.js';
+/** Sales remain fail-closed unless explicit production flags are enabled. */
 class AddLiveSeatScript {element(element){element.append('<script src="/assets/seat-live.js" defer></script>',{html:true});}}
 const errorResponse=()=>new Response(JSON.stringify({error:'Seat service temporarily unavailable'}),{status:503,headers:{'content-type':'application/json','cache-control':'no-store'}});
 export default {
@@ -19,6 +20,9 @@ export default {
   if(url.pathname==='/api/seats/receipt/lookup'){
    try{return (await handleReceiptQrPublic(request,env))??new Response('Not found',{status:404});}
    catch(error){console.error('Receipt QR error',error);return errorResponse();}
+  }
+  if(url.pathname==='/api/seats/public-status'||/^\/api\/seats\/public-section\/\d{3}$/.test(url.pathname)){
+   try{return await handlePublicInventory(request,env);}catch(error){console.error('Public inventory error',error);return errorResponse();}
   }
   if(url.pathname==='/api/seats/hold'||url.pathname==='/api/seats/checkout'){
    try{return await handlePublicCheckout(request,env);}

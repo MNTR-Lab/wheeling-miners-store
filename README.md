@@ -1,20 +1,13 @@
-# Wheeling Miners — Public checkout candidate (DISABLED)
+# Wheeling Miners — Customer Checkout UI (fail-closed)
 
-This package is intentionally **not enabled**. It adds two server-side routes behind strict flags, using existing D1 atomic reservation and Shopify cart functions. It does not publish Shopify products, release seats, or modify production data.
+Copy the included `season-tickets.html`, `src/seat-public-inventory.js`, `src/worker.js`, and `tests/seat-public-inventory.test.mjs` to the corresponding paths in the repository. **Replace `src/worker.js` in full.** Keep the existing `src/seat-public-checkout.js` and all other files.
 
-## Files
-- `src/seat-public-checkout.js` (new)
-- `tests/seat-public-checkout.test.mjs` (new)
-- `src/worker.js` (complete replacement)
+This adds a customer-facing page at `/season-tickets.html`, public read-only inventory endpoints, and tests. In TEST, public sales remain closed and no public D1 seat inventory is returned. Production sales remain disabled unless separately and explicitly approved via production Worker configuration, verified catalog/inventory, and operational sign-off.
 
-## Before any production enablement
-- Independently verify production D1 migrations and backup, 3,737 seats and 63 sections, Shopify variant mappings, prices and seat inventory.
-- Validate concurrent reservations, abandoned checkout expiry and cleanup, paid webhook, refunds, cancelled orders, ticket pickup and customer support.
-- Implement and verify public checkout abuse/rate limits, expiry recovery, and Shopify inventory parity; test under isolated staging configuration.
-- Obtain explicit team approval and authorization for production release.
-- Only then configure `WM_ENVIRONMENT=PRODUCTION`, `SEAT_PUBLIC_SALES_ENABLED=true`, `SEAT_PUBLIC_SALES_APPROVED=true`, `SEAT_CONTROLLED_CART_ENABLED=true`, and the **correct approved production** Shopify domain and secrets. Do not set any of these now.
+Test locally (from your fresh clone):
 
-The public checkout candidate is NOT launch-ready. These routes are a guarded foundation, not approval to sell.
+`node --test tests/seat-public-inventory.test.mjs tests/seat-public-checkout.test.mjs`
 
-## Tests
-`node --test tests/seat-public-checkout.test.mjs`
+Do **not** enable sales flags or publish production inventory as part of this commit. This is not a launch authorization.
+
+**Important limitation:** A 15-minute D1 hold is not by itself sufficient to guarantee checkout completion within that period. Shopify carts are separate from D1 inventory and may remain payable after a hold expires. Before launch, the payment/hold expiry reconciliation and refund/oversell procedure require end-to-end validation. This page is not the final approval to accept real orders.
