@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {isApprovedDollarTestSeat,isApprovedTestReleasePrice,TEST_VARIANT} from '../src/seat-test-price-policy.js';
+const env={WM_ENVIRONMENT:'TEST',SHOPIFY_STORE_DOMAIN:'wheeling-miners-ticket-testing.myshopify.com'};
+const seat={sku:'WM-ST-105-B-03',price_cents:100,shopify_variant_id:TEST_VARIANT,hold_id:null,shopify_order_id:null};
+test('specific $1 fixture permitted in TEST only',()=>assert.equal(isApprovedDollarTestSeat(seat,env),true));
+test('production denied',()=>assert.equal(isApprovedTestReleasePrice(seat,{...env,WM_ENVIRONMENT:'PRODUCTION'}),false));
+test('wrong shop denied',()=>assert.equal(isApprovedTestReleasePrice(seat,{...env,SHOPIFY_STORE_DOMAIN:'goat.myshopify.com'}),false));
+test('wrong variant denied',()=>assert.equal(isApprovedTestReleasePrice({...seat,shopify_variant_id:'gid://shopify/ProductVariant/123'},env),false));
+test('other $1 seat denied',()=>assert.equal(isApprovedTestReleasePrice({...seat,sku:'WM-ST-105-B-04'},env),false));
+test('claimed seat denied',()=>assert.equal(isApprovedTestReleasePrice({...seat,hold_id:'held'},env),false));
+test('standard price still allowed',()=>assert.equal(isApprovedTestReleasePrice({...seat,sku:'WM-ST-105-B-04',price_cents:16000},env),true));
