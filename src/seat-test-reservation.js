@@ -1,5 +1,6 @@
 /** TEST-only, admin-authenticated isolated reservation creation. Never publicly routed. */
 import {prepareReservationTransaction,executeReservationTransaction} from './seat-reservation-transaction.js';
+import {isApprovedTestReleasePrice} from './seat-test-price-policy.js';
 const HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store'};
 const reply=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:HEADERS});
 const SKU=/^WM-ST-\d{3}-[A-Z][A-Z0-9]{0,3}-\d{2,3}$/;
@@ -19,7 +20,7 @@ export async function handleTestReservation(request,env,{randomUUID=()=>crypto.r
  let input;try{input=validateIsolatedReservation(body,env)}catch(e){return reply({error:e.message},422)}
  const {sku}=input;
  const row=await env.SEAT_DB.prepare('SELECT sku,status,hold_id,shopify_order_id,shopify_variant_id,price_cents FROM seats WHERE sku=?').bind(sku).first();
- if(!row||row.status!=='AVAILABLE'||row.hold_id!==null||row.shopify_order_id!==null||!Number.isSafeInteger(row.price_cents)||row.price_cents<=100)return reply({error:'SEAT_NOT_AVAILABLE'},409);
+ if(!row||row.status!=='AVAILABLE'||row.hold_id!==null||row.shopify_order_id!==null||!isApprovedTestReleasePrice(row,env))return reply({error:'SEAT_NOT_AVAILABLE'},409);
  const current=now();
  if(!(current instanceof Date)||!Number.isFinite(current.valueOf()))return reply({error:'INVALID_CLOCK'},503);
  const reservationId=`wm_test_${randomUUID().replaceAll('-','')}`;

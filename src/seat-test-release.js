@@ -1,6 +1,7 @@
 /** Explicitly gated, admin-authenticated TEST-only release of one isolated seat.
  * Not wired into public checkout; production and historical SOLD fixtures are rejected.
  */
+import {isApprovedTestReleasePrice} from './seat-test-price-policy.js';
 const H={'content-type':'application/json; charset=utf-8','cache-control':'no-store'};
 const reply=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:H});
 const SKU=/^WM-ST-\d{3}-[A-Z][A-Z0-9]{0,3}-\d{2,3}$/;
@@ -19,11 +20,11 @@ export async function handleTestRelease(request,env){
  let input;try{input=validateTestRelease(body,env)}catch(e){return reply({error:e.message},422)}
  const {sku,operator}=input;
  const seat=await env.SEAT_DB.prepare('SELECT sku,status,price_cents,shopify_variant_id,hold_id,shopify_order_id FROM seats WHERE sku=?').bind(sku).first();
- if(!seat||seat.status!=='UNRELEASED'||seat.hold_id!==null||seat.shopify_order_id!==null||!Number.isSafeInteger(seat.price_cents)||seat.price_cents<=100||!/^gid:\/\/shopify\/ProductVariant\/[1-9]\d*$/.test(seat.shopify_variant_id||''))return reply({error:'SEAT_NOT_ELIGIBLE'},409);
+ if(!seat||seat.status!=='UNRELEASED'||seat.hold_id!==null||seat.shopify_order_id!==null||!isApprovedTestReleasePrice(seat,env)||!/^gid:\/\/shopify\/ProductVariant\/[1-9]\d*$/.test(seat.shopify_variant_id||''))return reply({error:'SEAT_NOT_ELIGIBLE'},409);
  try{
   await env.SEAT_DB.batch([
    env.SEAT_DB.prepare('DELETE FROM seat_admin_guard WHERE id=1'),
-   env.SEAT_DB.prepare("UPDATE seats SET status='AVAILABLE',updated_at=CURRENT_TIMESTAMP WHERE sku=? AND status='UNRELEASED' AND hold_id IS NULL AND shopify_order_id IS NULL AND price_cents>100 AND shopify_variant_id=?").bind(sku,seat.shopify_variant_id),
+   env.SEAT_DB.prepare("UPDATE seats SET status='AVAILABLE',updated_at=CURRENT_TIMESTAMP WHERE sku=? AND status='UNRELEASED' AND hold_id IS NULL AND shopify_order_id IS NULL AND price_cents=? AND shopify_variant_id=?").bind(sku,seat.price_cents,seat.shopify_variant_id),
    env.SEAT_DB.prepare('INSERT INTO seat_admin_guard (id,valid) VALUES (1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)'),
    env.SEAT_DB.prepare('DELETE FROM seat_admin_guard WHERE id=1'),
    env.SEAT_DB.prepare("INSERT INTO seat_admin_audit (seat_sku,action,previous_status,new_status,operator,reason) VALUES (?,'TEST_RELEASE','UNRELEASED','AVAILABLE',?,'Explicit isolated test checkout release')").bind(sku,operator)
