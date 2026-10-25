@@ -14,6 +14,8 @@
   },
   "vars": {
     "SEAT_CONTROLLED_CART_ENABLED": "true",
+    "SEAT_TEST_RELEASE_ENABLED": "true",
+    "SEAT_TEST_RESERVATION_ENABLED": "true",
     "SEAT_SHOPIFY_AUTH_PROBE_ENABLED": "true",
     "SHOPIFY_STORE_DOMAIN": "wheeling-miners-ticket-testing.myshopify.com",
     "WM_ENVIRONMENT": "TEST",
