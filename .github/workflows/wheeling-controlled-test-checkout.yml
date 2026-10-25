@@ -1,20 +1,27 @@
-name: Wheeling controlled test checkout (test store only)
+name: Wheeling controlled checkout readiness (TEST, read only)
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/wm-test-checkout.mjs'
+      - 'scripts/wm-test-checkout-preflight.mjs'
+      - 'tests/wm-test-checkout-preflight.test.mjs'
+      - '.github/workflows/wheeling-controlled-test-checkout.yml'
 permissions:
   contents: read
 jobs:
-  checkout:
+  preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
-      - name: Create isolated test reservation and Shopify cart
+          node-version: '22'
+      - name: Validate checkout safety
+        run: node --test tests/wm-test-checkout-preflight.test.mjs
+      - name: Inspect safe TEST checkout candidate without writes
         env:
           CLOUDFLARE_TEST_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WM_TEST_SEAT_ADMIN_TOKEN: ${{ secrets.WM_TEST_SEAT_ADMIN_TOKEN }}
         run: node scripts/wm-test-checkout.mjs
