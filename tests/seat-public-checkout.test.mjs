@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {handlePublicCheckout,publicSalesEnabled} from '../src/seat-public-checkout.js';
-const base={WM_ENVIRONMENT:'PRODUCTION',SEAT_PUBLIC_SALES_ENABLED:'true',SEAT_PUBLIC_SALES_APPROVED:'true',SEAT_CONTROLLED_CART_ENABLED:'true',SHOPIFY_STORE_DOMAIN:'miners-shop.myshopify.com'};
+// Test-only dummy credentials. No real Shopify calls or production writes.
+const base={WM_ENVIRONMENT:'PRODUCTION',SEAT_PUBLIC_SALES_ENABLED:'true',SEAT_PUBLIC_SALES_APPROVED:'true',SEAT_CONTROLLED_CART_ENABLED:'true',SEAT_PAID_FULFILLMENT_ENABLED:'true',SEAT_PRODUCTION_PAID_COMMIT_APPROVED:'true',SHOPIFY_WEBHOOK_SECRET:'fixture-webhook-secret',SHOPIFY_CLIENT_ID:'fixture-client-id',SHOPIFY_CLIENT_SECRET:'fixture-client-secret',SHOPIFY_STOREFRONT_TOKEN:'fixture-storefront-token',SHOPIFY_STORE_DOMAIN:'miners-shop.myshopify.com'};
 const req=(path,body)=>new Request('https://example.com'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
 test('fails closed without explicit production approval and required flags',()=>{
- for(const [key,value] of Object.entries(base))assert.equal(publicSalesEnabled({...base,[key]:key==='WM_ENVIRONMENT'?'TEST':'false'}),false);
+ for(const key of Object.keys(base)){
+  const missing={...base};delete missing[key];assert.equal(publicSalesEnabled(missing),false,`missing ${key}`);
+ }
+ for(const key of ['SEAT_PUBLIC_SALES_ENABLED','SEAT_PUBLIC_SALES_APPROVED','SEAT_CONTROLLED_CART_ENABLED','SEAT_PAID_FULFILLMENT_ENABLED','SEAT_PRODUCTION_PAID_COMMIT_APPROVED'])assert.equal(publicSalesEnabled({...base,[key]:'false'}),false,key);
  assert.equal(publicSalesEnabled({...base,SHOPIFY_STORE_DOMAIN:'wheeling-miners-ticket-testing.myshopify.com'}),false);
  assert.equal(publicSalesEnabled(base),true);
 });
