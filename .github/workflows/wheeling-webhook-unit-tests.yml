@@ -1,0 +1,21 @@
+name: Wheeling TEST webhook automated unit tests
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/seat-*.js'
+      - 'tests/paid-webhook.test.mjs'
+      - '.github/workflows/wheeling-webhook-unit-tests.yml'
+permissions:
+  contents: read
+jobs:
+  webhook-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test signed payment, duplicate replay, tampering, expiry and isolation
+        run: node --test tests/paid-webhook.test.mjs
