@@ -44,7 +44,7 @@ jobs:
           const rows=await api('SELECT sku,status,price_cents,shopify_order_id,shopify_variant_id FROM seats ORDER BY sku');
           if(rows.length!==2||rows.some(r=>r.status!=='SOLD'))throw Error('Expected exactly two SOLD test seats');
           const expected={'WM-ST-105-B-01':'gid://shopify/ProductVariant/50931850575929','WM-ST-105-B-02':'gid://shopify/ProductVariant/50943009259577'};
-          for(const r of rows){if(expected[r.sku]!==r.shopify_variant_id||r.price_cents!==100)throw Error('Existing sold test seat mismatch: '+r.sku);}
+          for(const r of rows){if(expected[r.sku]!==r.shopify_variant_id||r.price_cents!==100||!r.shopify_order_id)throw Error('Existing sold test seat mismatch: '+r.sku);}
           const tables=await api('PRAGMA table_info(seats)');
           for(const col of ['sku','section','row_label','seat_number','price_cents','status','shopify_variant_id'])if(!tables.some(c=>c.name===col))throw Error('Missing required column '+col);
           const res=await api('SELECT COUNT(*) AS n FROM reservations');
@@ -63,10 +63,25 @@ jobs:
           path: test-db-backup/test-d1-before-inventory.sql
           retention-days: 30
           if-no-files-found: error
+      - name: Generate D1-compatible import from verified offline candidate
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('data/migrations/TEST-inventory-candidate.sql').read_text()
+          lines=src.splitlines()
+          assert sum(x.startswith('INSERT INTO seats ') for x in lines)==3735
+          assert sum(x.strip()=='BEGIN TRANSACTION;' for x in lines)==1
+          assert sum(x.strip()=='COMMIT;' for x in lines)==1
+          output='\n'.join(x for x in lines if x.strip() not in ('BEGIN TRANSACTION;','COMMIT;'))+'\n'
+          assert output.count('INSERT INTO seats ')==3735
+          assert 'BEGIN TRANSACTION' not in output and 'COMMIT;' not in output
+          Path('test-db-backup/test-d1-wrangler-compatible.sql').write_text(output)
+          print('D1-compatible TEST import prepared: 3735 INSERT statements; original candidate unchanged.')
+          PY
       - name: Import 3735 UNRELEASED seats to TEST D1 only
         run: |
           set -euo pipefail
-          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --file data/migrations/TEST-inventory-candidate.sql
+          npx --yes wrangler@4 d1 execute wheeling-miners-seats-test --remote --config wrangler.test.jsonc --file test-db-backup/test-d1-wrangler-compatible.sql
       - name: Verify TEST D1 after import
         run: |
           node --input-type=module <<'JS'
@@ -74,9 +89,10 @@ jobs:
             const r=await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/d1/database/${process.env.TEST_DB}/query`,{method:'POST',headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({sql})});
             const j=await r.json();if(!r.ok||!j.success)throw Error(JSON.stringify(j.errors));return j.result[0].results;
           };
-          const s=(await api('SELECT COUNT(*) AS total,COUNT(DISTINCT section) AS sections,COUNT(DISTINCT shopify_variant_id) AS variants,SUM(CASE WHEN status=\'SOLD\' THEN 1 ELSE 0 END) AS sold,SUM(CASE WHEN status=\'UNRELEASED\' THEN 1 ELSE 0 END) AS unreleased FROM seats'))[0];
+          const s=(await api("SELECT COUNT(*) AS total,COUNT(DISTINCT section) AS sections,COUNT(DISTINCT shopify_variant_id) AS variants,SUM(CASE WHEN status='SOLD' THEN 1 ELSE 0 END) AS sold,SUM(CASE WHEN status='UNRELEASED' THEN 1 ELSE 0 END) AS unreleased FROM seats"))[0];
           if(s.total!==3737||s.sections!==63||s.variants!==3737||s.sold!==2||s.unreleased!==3735)throw Error('Post-import verification failed: '+JSON.stringify(s));
-          const sold=await api("SELECT sku,price_cents,shopify_variant_id FROM seats WHERE status='SOLD' ORDER BY sku");
-          if(sold.length!==2||sold[0].sku!=='WM-ST-105-B-01'||sold[1].sku!=='WM-ST-105-B-02'||sold.some(x=>x.price_cents!==100))throw Error('Sold seat protection failed');
+          const sold=await api("SELECT sku,price_cents,shopify_variant_id,shopify_order_id FROM seats WHERE status='SOLD' ORDER BY sku");
+          const expected={'WM-ST-105-B-01':['gid://shopify/ProductVariant/50931850575929','18969898221625'],'WM-ST-105-B-02':['gid://shopify/ProductVariant/50943009259577','18970068058169']};
+          if(sold.length!==2||sold.some(x=>x.price_cents!==100||!expected[x.sku]||x.shopify_variant_id!==expected[x.sku][0]||x.shopify_order_id!==expected[x.sku][1]))throw Error('Sold seat protection failed');
           console.log('VERIFIED TEST IMPORT: '+JSON.stringify(s));
           JS
