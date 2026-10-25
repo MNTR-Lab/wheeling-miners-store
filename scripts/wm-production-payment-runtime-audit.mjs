@@ -53,7 +53,15 @@ export async function auditProductionPaymentRuntime(env,{fetchImpl=fetch,log=con
  const unsigned=await get(path,{method:'POST',headers,body:raw});
  check(unsigned.response.status===401,'Unsigned webhook was not rejected');
  const signed=await get(path,{method:'POST',headers:{...headers,'x-shopify-hmac-sha256':signature},body:raw});
- check(signed.response.status===200&&signed.body.ok===true&&signed.body.ignored===true&&signed.body.reason==='NO_ASSIGNED_SEATS','Signed non-seat probe failed; verify deployed integration, production environment/store, and Shopify app signing secret');
+ const signedOk=signed.response.status===200&&signed.body?.ok===true&&signed.body?.ignored===true&&signed.body?.reason==='NO_ASSIGNED_SEATS';
+ if(!signedOk){
+  // Print only known server error codes, never arbitrary response bodies or secrets.
+  const known=new Set(['INVALID_SIGNATURE','WRONG_SHOP','WEBHOOK_NOT_CONFIGURED','INVALID_JSON','INVALID_SEAT_ORDER','UNSUPPORTED_TOPIC']);
+  const code=known.has(signed.body?.error)?signed.body.error:'UNEXPECTED_RESPONSE';
+  const hints={INVALID_SIGNATURE:'Worker SHOPIFY_WEBHOOK_SECRET does not validate the signature made with the existing GitHub WM_SHOPIFY_CLIENT_SECRET. Confirm both belong to the same installed Shopify app; do not rotate credentials blindly.',WRONG_SHOP:'The deployed handler rejected the production shop. Confirm Worker WM_ENVIRONMENT is exactly PRODUCTION and SHOPIFY_STORE_DOMAIN is exactly '+PRODUCTION_SHOP+'.',WEBHOOK_NOT_CONFIGURED:'Check the production Worker webhook-secret and SEAT_DB bindings.'};
+  throw Error('Signed non-seat probe failed: HTTP '+signed.response.status+' '+code+'. '+(hints[code]||'The deployed webhook did not return the expected ignored non-seat response; inspect its deployed handler.'));
+ }
+
  for(const shop of ['wheeling-miners-ticket-testing.myshopify.com','unrelated-shop.myshopify.com']){
   const wrong=await get(path,{method:'POST',headers:{...headers,'x-shopify-shop-domain':shop,'x-shopify-hmac-sha256':signature},body:raw});
   check(wrong.response.status===403,'Webhook did not reject wrong Shopify store');
