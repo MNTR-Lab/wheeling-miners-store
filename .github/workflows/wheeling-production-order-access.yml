@@ -1,0 +1,32 @@
+name: Wheeling production order access (read-only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WM_SHOPIFY_PRODUCTION_STORE_DOMAIN: ${{ vars.WM_SHOPIFY_PRODUCTION_STORE_DOMAIN }}
+      WM_SHOPIFY_CLIENT_ID: ${{ secrets.WM_SHOPIFY_CLIENT_ID }}
+      WM_SHOPIFY_CLIENT_SECRET: ${{ secrets.WM_SHOPIFY_CLIENT_SECRET }}
+      WM_WEBHOOK_SIGNING_SECRET: ${{ secrets.WM_SHOPIFY_CLIENT_SECRET }}
+      WM_SEAT_ADMIN_TOKEN: ${{ secrets.WM_SEAT_ADMIN_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test read-only credential checker offline
+        run: node --test tests/seat-production-order-access.test.mjs
+      - name: Confirm production remains locked before credential probe
+        run: node scripts/wm-production-payment-runtime-audit.mjs
+      - name: Verify GitHub and Worker Shopify authentication and order scope
+        run: node scripts/wm-production-order-access.mjs
+      - name: Reconfirm existing production webhook subscription
+        env:
+          WM_WEBHOOK_ACTION: verify
+        run: node scripts/wm-production-webhook-subscription.mjs
