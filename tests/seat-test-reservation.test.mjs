@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateIsolatedReservation,handleTestReservation} from '../src/seat-test-reservation.js';
+const env={WM_ENVIRONMENT:'TEST',SHOPIFY_STORE_DOMAIN:'wheeling-miners-ticket-testing.myshopify.com',SEAT_TEST_RESERVATION_ENABLED:'true'};
+const body={sku:'WM-ST-105-B-03',operator:'Test Admin',confirmation:'RESERVE TEST WM-ST-105-B-03'};
+const req=(b=body)=>new Request('https://example.test/api/seats/admin/test-reservation',{method:'POST',body:JSON.stringify(b)});
+test('explicit gate blocks all operations by default',async()=>{assert.equal((await handleTestReservation(req(),{...env,SEAT_TEST_RESERVATION_ENABLED:'false'})).status,423)});
+test('rejects production and wrong store',()=>{assert.throws(()=>validateIsolatedReservation(body,{...env,WM_ENVIRONMENT:'PRODUCTION'}));assert.throws(()=>validateIsolatedReservation(body,{...env,SHOPIFY_STORE_DOMAIN:'other.myshopify.com'}))});
+test('protects SOLD fixtures',()=>{for(const sku of ['WM-ST-105-B-01','WM-ST-105-B-02'])assert.throws(()=>validateIsolatedReservation({...body,sku,confirmation:`RESERVE TEST ${sku}`},env))});
+test('requires exact confirmation',()=>assert.throws(()=>validateIsolatedReservation({...body,confirmation:'yes'},env)));
+test('validates correct explicit request',()=>assert.equal(validateIsolatedReservation(body,env).sku,body.sku));
+test('rejects sold and unreleased inventory without writing',async()=>{for(const status of ['SOLD','UNRELEASED','HELD']){let wrote=false;const db={prepare:()=>({bind:()=>({first:async()=>({sku:body.sku,status,hold_id:null,shopify_order_id:null,shopify_variant_id:'gid://shopify/ProductVariant/123',price_cents:6500})})}),batch:async()=>{wrote=true}};const response=await handleTestReservation(req(),{...env,SEAT_DB:db});assert.equal(response.status,409);assert.equal(wrote,false)}});
