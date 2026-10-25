@@ -1,31 +1,27 @@
-import crypto from 'node:crypto';
-const required=['CLOUDFLARE_TEST_API_TOKEN','CLOUDFLARE_ACCOUNT_ID','WM_TEST_SEAT_ADMIN_TOKEN'];
-for(const name of required)if(!process.env[name])throw Error(`Missing ${name}`);
-const account=process.env.CLOUDFLARE_ACCOUNT_ID;
-const database='2a06b7a7-e833-4a01-8667-2f6388dc0ee0'; // TEST D1 ONLY
-const base='https://wheeling-miners-store-test.bikard.workers.dev';
-const sku='WM-ST-105-B-02';
-const variant='gid://shopify/ProductVariant/50943009259577';
-const headers={Authorization:`Bearer ${process.env.CLOUDFLARE_TEST_API_TOKEN}`,'content-type':'application/json'};
-async function query(sql,params=[]){
- const r=await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${database}/query`,{method:'POST',headers,body:JSON.stringify({sql,params})});
- const j=await r.json();if(!r.ok||!j.success||!j.result?.[0]?.success)throw Error(`Test D1 query failed: ${JSON.stringify(j.errors??j.result?.[0]?.error??r.status)}`);
- return j.result[0];
+/** TEST-only checkout candidate verification. No database writes or cart creation.
+ * Intentionally requires a separate explicit launch decision before a live checkout test.
+ */
+import {validateTestCheckoutSeat} from './wm-test-checkout-preflight.mjs';
+const DB='2a06b7a7-e833-4a01-8667-2f6388dc0ee0';
+const ACCOUNT='0b83177a971bd8fcfad88ed4e531eb50';
+const BASE='https://wheeling-miners-store-test.bikard.workers.dev';
+const token=process.env.CLOUDFLARE_TEST_API_TOKEN;
+if(!token)throw Error('Missing CLOUDFLARE_TEST_API_TOKEN');
+if(process.env.CLOUDFLARE_ACCOUNT_ID!==ACCOUNT)throw Error('Wrong Cloudflare account');
+async function query(sql){
+ const r=await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/d1/database/${DB}/query`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({sql})});
+ const j=await r.json();if(!r.ok||!j.success||!j.result?.[0]?.success)throw Error('TEST D1 read failed');
+ return j.result[0].results||[];
 }
-const seat=(await query('SELECT sku,status,hold_id,shopify_order_id,shopify_variant_id,price_cents FROM seats WHERE sku=?',[sku])).results?.[0];
-if(!seat||seat.status!=='UNRELEASED'||seat.hold_id!==null||seat.shopify_order_id!==null||seat.shopify_variant_id!==variant||seat.price_cents!==100)throw Error('Test seat is not in its approved clean state; stopping without changes.');
-const id='wm_test_checkout_'+crypto.randomBytes(12).toString('hex');
-const nonce='wm_nonce_'+crypto.randomBytes(24).toString('hex');
-const now=Date.now(), expiry=now+30*60*1000;
-// Inserts are limited to the hard-coded test database and SKU. A fresh reservation is generated each run.
-await query('INSERT INTO reservations (id,status,created_at,checkout_nonce,expires_at,shopify_order_id) VALUES (?,\'HELD\',?,?,?,NULL)',[id,now,nonce,expiry]);
-await query('INSERT INTO reservation_seats (reservation_id,seat_sku,shopify_variant_id) VALUES (?,?,?)',[id,sku,variant]);
-const changed=await query("UPDATE seats SET status='HELD',hold_id=?,hold_expires_at=?,updated_at=CURRENT_TIMESTAMP WHERE sku=? AND status='UNRELEASED' AND hold_id IS NULL AND shopify_order_id IS NULL AND shopify_variant_id=?",[id,expiry,sku,variant]);
-if(changed.meta?.changes!==1)throw Error('Test seat could not be exclusively held; no cart was created.');
-const response=await fetch(`${base}/api/seats/admin/controlled-cart`,{method:'POST',headers:{authorization:`Bearer ${process.env.WM_TEST_SEAT_ADMIN_TOKEN}`,'content-type':'application/json'},body:JSON.stringify({reservationId:id})});
-const body=await response.json().catch(()=>({error:'NON_JSON_RESPONSE'}));
-if(!response.ok||body.mode!=='CONTROLLED_CART_ONLY')throw Error(`Test cart failed (${response.status}): ${body.error??'UNEXPECTED_RESPONSE'}. Reservation ${id} expires in 30 minutes; no purchase was made.`);
-if(typeof body.checkoutUrl!=='string'||!body.checkoutUrl.startsWith('https://wheeling-miners-ticket-testing.myshopify.com/'))throw Error('Unexpected checkout host; refusing to expose URL.');
-const summary=process.env.GITHUB_STEP_SUMMARY;
-if(summary){const fs=await import('node:fs');fs.appendFileSync(summary,`## Isolated test checkout ready\n\n- Seat: ${sku}\n- Test reservation: ${id}\n- Expires: ${new Date(expiry).toISOString()}\n- **Test-store checkout:** ${body.checkoutUrl}\n\n**Only use Shopify test payment. Do not enter a real card or use GOAT Sports production.**\n`);}
-console.log('Controlled test cart created. Open the workflow run summary for the test-only checkout URL. No payment processed.');
+const rows=await query("SELECT sku,status,hold_id,shopify_order_id,shopify_variant_id,price_cents FROM seats WHERE status='UNRELEASED' AND hold_id IS NULL AND shopify_order_id IS NULL AND price_cents>100 AND shopify_variant_id IS NOT NULL ORDER BY sku LIMIT 100");
+const eligible=[];
+for(const seat of rows){try{validateTestCheckoutSeat(seat,{sku:seat.sku,variant:seat.shopify_variant_id});eligible.push(seat)}catch{}}
+if(!eligible.length)throw Error('No safe candidate seats for controlled TEST checkout');
+const status=await fetch(`${BASE}/api/seats/status`,{signal:AbortSignal.timeout(15000)});
+if(!status.ok)throw Error('TEST Worker unavailable');
+const live=await status.json();
+if(live.mode!=='STAGING'||live.checkout_enabled!==false||live.holds_enabled!==false)throw Error('Public checkout lock not verified');
+const seat=eligible[0];
+const summary=`## Controlled TEST checkout preflight (READ ONLY)\n\n- Candidate seat: ${seat.sku}\n- Approved ticket price: $${(seat.price_cents/100).toFixed(2)}\n- Shopify variant: ${seat.shopify_variant_id}\n- Eligible candidates inspected: ${eligible.length}\n- Public checkout: disabled (verified)\n- No reservation created; no inventory changed; no cart created; no payment collected.\n\n**Next launch dependency:** verify that this variant is published and has TEST-store inventory, then perform a separately authorized end-to-end test transaction.\n`;
+if(process.env.GITHUB_STEP_SUMMARY){const {appendFileSync}=await import('node:fs');appendFileSync(process.env.GITHUB_STEP_SUMMARY,summary)}
+console.log(summary);
