@@ -1,15 +1,13 @@
-WHEELING MINERS — PRODUCTION LOCKDOWN REGRESSION TESTS
+WHEELING MINERS — TEST ADMIN READINESS REPLACEMENT
 
-Upload ONLY:
-  tests/seat-public-lockdown-v130.test.mjs
+Upload the CONTENTS of this ZIP into the repository, preserving folders.
+Replace the three existing src/ files in full (no patches).
+Add tests/admin-readiness-schema.test.mjs and .github/workflows/wheeling-test-admin-readiness.yml.
 
-to the repository tests/ folder. Do not upload this README.
+Fixes: admin catalog audit, mapping report, and variant manifest previously referenced
+section_product_sku, a column absent from the live TEST D1 seats table.
+Now derives WM-ST-SEC-<section> in SQL. The manifest excludes the two SOLD
+$1 test fixtures and never publishes inventory or enables checkout.
 
-The new tests check public hold and checkout remain disabled, the admin-only
-controlled cart is off by default, unauthorized cart requests are denied,
-and paid webhook processing refuses missing secret configuration.
-
-No production seat inventory, Shopify products, Worker variables or payments
-are modified by these tests. They use in-memory mock database objects.
-
-Expected verification: GitHub Actions 'Wheeling Miners seat safety tests' green.
+Workflow runs unit checks on push. NO Cloudflare deploy, NO database writes,
+NO Shopify changes, NO sales activation. Production is untouched.
