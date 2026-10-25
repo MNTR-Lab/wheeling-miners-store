@@ -1,0 +1,29 @@
+name: Wheeling production payment audit (read-only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TEST_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WM_SHOPIFY_PRODUCTION_STORE_DOMAIN: ${{ vars.WM_SHOPIFY_PRODUCTION_STORE_DOMAIN }}
+      WM_SHOPIFY_CLIENT_ID: ${{ secrets.WM_SHOPIFY_CLIENT_ID }}
+      WM_SHOPIFY_CLIENT_SECRET: ${{ secrets.WM_SHOPIFY_CLIENT_SECRET }}
+      WM_WEBHOOK_SIGNING_SECRET: ${{ secrets.WM_SHOPIFY_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test production payment regressions without external access
+        run: node --test tests/seat-production-payment-integration.test.mjs tests/seat-production-payment-runtime-audit.test.mjs
+      - name: Verify deployed production payment configuration and closed sales
+        run: node scripts/wm-production-payment-runtime-audit.mjs
+      - name: Verify existing production orders-paid subscription without registering
+        env:
+          WM_WEBHOOK_ACTION: verify
+        run: node scripts/wm-production-webhook-subscription.mjs
