@@ -1,6 +1,11 @@
 name: Wheeling production order access (read-only)
 on:
   workflow_dispatch:
+    inputs:
+      order_id:
+        description: Optional existing paid Shopify order ID; blank selects a recent paid order
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -20,8 +25,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Test read-only credential checker offline
-        run: node --test tests/seat-production-order-access.test.mjs
+      - name: Test read-only credential and actual payment-read checkers offline
+        run: node --test tests/seat-production-order-access.test.mjs tests/seat-production-payment-read.test.mjs
       - name: Confirm production remains locked before credential probe
         run: node scripts/wm-production-payment-runtime-audit.mjs
       - name: Verify GitHub and Worker Shopify authentication and order scope
@@ -30,3 +35,7 @@ jobs:
         env:
           WM_WEBHOOK_ACTION: verify
         run: node scripts/wm-production-webhook-subscription.mjs
+      - name: Read existing production paid order and transactions without writes
+        env:
+          WM_VERIFY_ORDER_ID: ${{ inputs.order_id }}
+        run: node scripts/wm-production-payment-read.mjs
