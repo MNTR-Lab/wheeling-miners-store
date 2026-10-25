@@ -1,1 +1,11 @@
-COMMIT all three included files to the Wheeling Miners repository preserving paths. The workflow runs automatically. It checks an OFFLINE proposed TEST migration with SQLite and does NOT apply it to any Cloudflare database. DO NOT run the SQL manually. The two existing sold seats are intentionally excluded and preserved. The 3735 imported seats would remain UNRELEASED. A separately reviewed, guarded TEST-only migration workflow will be required before applying.
+WHEELING MINERS — CONTROLLED TEST CHECKOUT CONSOLE
+
+Copy controlled-checkout-console.html into the repository ROOT and commit.
+No Worker routing or database migration required; Wrangler assets publish the page.
+Deploy TEST only:
+cd ~/Downloads/wheeling-miners-latest && git pull origin main && npx wrangler deploy --config wrangler.test.jsonc
+
+Open https://wheeling-miners-store-test.bikard.workers.dev/controlled-checkout-console.html
+
+This is a staff-only UI to EXISTING authenticated admin endpoints. The HTML is publicly retrievable but the APIs require the TEST seat admin token. It cannot enable production sales.
+No further $1 test purchase is requested. The previously SOLD seat is explicitly blocked in the UI.
