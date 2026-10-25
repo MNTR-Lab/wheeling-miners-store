@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {publicSalesEnabled,handlePublicCheckout} from '../src/seat-public-checkout.js';
+const complete={WM_ENVIRONMENT:'PRODUCTION',SEAT_PUBLIC_SALES_ENABLED:'true',SEAT_PUBLIC_SALES_APPROVED:'true',SEAT_CONTROLLED_CART_ENABLED:'true',SEAT_PAID_FULFILLMENT_ENABLED:'true',SEAT_PRODUCTION_PAID_COMMIT_APPROVED:'true',SHOPIFY_WEBHOOK_SECRET:'fake-secret',SHOPIFY_CLIENT_ID:'fake-id',SHOPIFY_CLIENT_SECRET:'fake-client-secret',SHOPIFY_STOREFRONT_TOKEN:'fake-token-12345',SHOPIFY_STORE_DOMAIN:'example-prod.myshopify.com'};
+test('complete independently approved production configuration can pass the gate',()=>assert.equal(publicSalesEnabled(complete),true));
+for(const key of Object.keys(complete))test('fails closed without '+key,()=>{const env={...complete};delete env[key];assert.equal(publicSalesEnabled(env),false)});
+test('TEST store never opens',()=>assert.equal(publicSalesEnabled({...complete,SHOPIFY_STORE_DOMAIN:'wheeling-miners-ticket-testing.myshopify.com'}),false));
+test('TEST environment never opens',()=>assert.equal(publicSalesEnabled({...complete,WM_ENVIRONMENT:'TEST'}),false));
+test('empty webhook secret never opens',()=>assert.equal(publicSalesEnabled({...complete,SHOPIFY_WEBHOOK_SECRET:''}),false));
+test('incomplete setup never accesses DB',async()=>{let touched=false;const env={...complete,SEAT_PRODUCTION_PAID_COMMIT_APPROVED:'false',SEAT_DB:{prepare(){touched=true;throw Error('DB ACCESSED')},batch(){touched=true}}};const res=await handlePublicCheckout(new Request('https://example.com/api/seats/hold',{method:'POST',body:JSON.stringify({skus:['WM-ST-105-B-01']})}),env);assert.equal(res.status,423);assert.equal(touched,false)});

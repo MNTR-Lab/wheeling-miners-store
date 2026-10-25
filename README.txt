@@ -1,12 +1,16 @@
-Wheeling Miners — webhook test fixture compatibility update
+WHEELING MINERS — PAYMENT-SAFETY LAUNCH GATE
 
-Replace the two files under tests/ with these complete versions.
-No production source files are changed.
+This replaces src/seat-public-checkout.js and adds tests/seat-public-launch-gate.test.mjs.
 
-The live-transition test uses a mock Shopify Admin API to verify paid status and transaction timestamp without network calls or real payments.
-The replay regression test now supplies the signed TEST Shopify shop-domain header and explicit TEST environment.
+Why: the old public checkout activation gate allowed the checkout to open even when
+production paid-order fulfillment was disabled. This update requires BOTH systems
+and their independent approvals to be configured before accepting public holds.
 
-Run from your local repository:
-node --test tests/seat-webhook-environment.test.mjs tests/seat-shopify-webhook.test.mjs tests/seat-shopify-webhook-v107.test.mjs tests/seat-paid-webhook-replay-regression.test.mjs tests/seat-paid-live-transition-integration.test.mjs
+This does NOT activate production sales. It does NOT change Shopify, D1, or secrets.
 
-NOTE: The legacy v107 test file may also require migration to the new shop-domain header. Do not enable production checkout based on these tests alone.
+Upload both files to the same paths in GitHub, commit together.
+Then locally run:
+  cd "$HOME/Downloads/wheeling-miners-fresh" && git pull origin main && node --test tests/seat-public-launch-gate.test.mjs tests/seat-public-checkout.test.mjs
+
+Do NOT enable production sales until payment-to-seat mapping, concurrency and
+production Shopify variant availability have been verified.

@@ -1,7 +1,4 @@
-/** Public checkout candidate. FAIL CLOSED unless explicitly approved in production.
- * Do not enable flags until inventory, Shopify catalog, refunds and operations are approved.
- * Worker routing must call this module before the staging seat API.
- */
+/** Public checkout. FAIL CLOSED until independently approved production payment fulfillment. */
 import {validateSeatRequest} from './seat-reservation-core.js';
 import {prepareReservationTransaction,executeReservationTransaction} from './seat-reservation-transaction.js';
 import {createControlledSeatCart} from './seat-shopify-cart.js';
@@ -12,6 +9,12 @@ const PROD_HOST=/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
 export function publicSalesEnabled(env){
  return env?.WM_ENVIRONMENT==='PRODUCTION'&&env?.SEAT_PUBLIC_SALES_ENABLED==='true'&&
  env?.SEAT_PUBLIC_SALES_APPROVED==='true'&&env?.SEAT_CONTROLLED_CART_ENABLED==='true'&&
+ // Never accept customer payment while the paid-order commit is intentionally disabled.
+ env?.SEAT_PAID_FULFILLMENT_ENABLED==='true'&&env?.SEAT_PRODUCTION_PAID_COMMIT_APPROVED==='true'&&
+ typeof env?.SHOPIFY_WEBHOOK_SECRET==='string'&&env.SHOPIFY_WEBHOOK_SECRET.length>0&&
+ typeof env?.SHOPIFY_CLIENT_ID==='string'&&env.SHOPIFY_CLIENT_ID.length>0&&
+ typeof env?.SHOPIFY_CLIENT_SECRET==='string'&&env.SHOPIFY_CLIENT_SECRET.length>0&&
+ typeof env?.SHOPIFY_STOREFRONT_TOKEN==='string'&&env.SHOPIFY_STOREFRONT_TOKEN.length>=10&&
  typeof env?.SHOPIFY_STORE_DOMAIN==='string'&&PROD_HOST.test(env.SHOPIFY_STORE_DOMAIN)&&
  env.SHOPIFY_STORE_DOMAIN!=='wheeling-miners-ticket-testing.myshopify.com';
 }
