@@ -1,5 +1,55 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Wheeling Miners | Season Ticket Receipt</title><style>
-:root{font-family:system-ui,Arial,sans-serif;background:#f5f5f5;color:#181818}*{box-sizing:border-box}body{margin:0}header{background:#171717;color:white;padding:28px 16px;text-align:center;border-bottom:5px solid #d5a52c}main{max-width:700px;margin:30px auto;padding:0 16px}.card{background:#fff;border:1px solid #ddd;border-radius:14px;padding:24px;box-shadow:0 6px 24px #0000000a}h1{margin:0;font-size:24px}h2{font-size:20px}p{line-height:1.55}.muted{color:#555}.notice{background:#fff6db;border-left:4px solid #d5a52c;padding:12px}.error{color:#a00000}table{border-collapse:collapse;width:100%}th,td{padding:12px;border-bottom:1px solid #eee;text-align:left}th{font-size:13px}#code{word-break:break-all}button{background:#181818;color:#fff;padding:12px 20px;border:0;border-radius:8px;cursor:pointer}#receipt{display:none}</style></head><body><header><h1>WHEELING MINERS</h1><p>Season Ticket Purchase Receipt</p></header><main><div class="card"><p class="notice"><strong>Not an admission ticket.</strong> Present this receipt and proof of purchase to authorized Wheeling Miners staff to collect your physical season tickets.</p><p id="status">Checking receipt…</p><p><a id="staff" href="/receipt-qr-admin.html">Authorized staff: resolve receipt</a></p><section id="receipt"><h2>Assigned seats</h2><table><thead><tr><th>Section</th><th>Row</th><th>Seat</th></tr></thead><tbody id="seats"></tbody></table><p id="issue"></p><p class="muted">One receipt covers all seats in your purchase. Staff must independently verify payment and identity before handing over tickets.</p></section></div></main><script>
-'use strict';const $=id=>document.getElementById(id);const code=new URLSearchParams(location.hash.slice(1)).get('code');if(code&&/^[a-f0-9]{64}$/.test(code))$('staff').href='/receipt-qr-admin.html#code='+code;
-(async()=>{if(!code||!/^[a-f0-9]{64}$/.test(code)){$('status').textContent='Invalid or missing receipt code.';return}try{const r=await fetch('/api/seats/receipt/lookup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),cache:'no-store'});const d=await r.json();if(!r.ok)throw Error(d.error||'Receipt unavailable');for(const seat of d.season_tickets){const tr=document.createElement('tr');for(const key of ['section','row','seat']){const td=document.createElement('td');td.textContent=seat[key];tr.append(td)}$('seats').append(tr)}$('issue').textContent=d.issuance_status==='ISSUED'?'Physical tickets have already been issued.':'Physical tickets have not yet been issued.';$('receipt').style.display='block';$('status').textContent='Verified season-ticket receipt · '+d.ticket_count+' seat(s).'}catch(e){$('status').textContent='Unable to verify receipt: '+e.message;$('status').className='error'}})();
-</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer">
+<title>Wheeling Miners | Season Ticket Pickup Receipt</title>
+<style>
+:root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:#1c1c1c;background:#f4f4f4;--gold:#d5a52c;--black:#191919}*{box-sizing:border-box}body{margin:0}header{background:var(--black);color:white;padding:26px 16px;border-bottom:5px solid var(--gold)}.wrap{max-width:760px;margin:auto}header h1{margin:0;font-size:clamp(23px,5vw,30px);letter-spacing:.04em}header p{margin:7px 0 0;color:#e8e8e8}main{padding:24px 16px 44px}.card{background:#fff;border:1px solid #dedede;border-radius:14px;padding:24px;box-shadow:0 6px 22px #0000000a}h2{font-size:21px;margin:0 0 12px}.notice{padding:15px;border-left:5px solid var(--gold);background:#fff5d9;line-height:1.5}.muted{color:#515151;line-height:1.55}.status{font-weight:700;margin:20px 0}.error{color:#a41f32}.success{color:#196036}.qr-panel{text-align:center;border:1px solid #e4e4e4;border-radius:12px;background:#fafafa;padding:22px 12px;margin:20px 0}.qr-panel svg{max-width:100%;height:auto;display:block;margin:12px auto;background:#fff}.qr-panel h3{margin:0}.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:18px 0}button{background:var(--black);color:#fff;border:0;border-radius:8px;padding:12px 18px;font-size:15px;font-weight:700;cursor:pointer}button.secondary{background:var(--gold);color:#191919}button:disabled{opacity:.5;cursor:not-allowed}table{border-collapse:collapse;width:100%;margin:12px 0 18px}th,td{text-align:left;border-bottom:1px solid #e9e9e9;padding:12px}th{font-size:12px;text-transform:uppercase;color:#555}.badge{display:inline-block;padding:8px 12px;border-radius:999px;background:#ececec;font-weight:700}.badge.issued{background:#e3f3e5;color:#18582d}.hidden{display:none!important}#share-message{font-size:13px;overflow-wrap:anywhere}.foot{font-size:13px;color:#555;border-top:1px solid #eee;padding-top:16px;margin-top:22px}@media(max-width:520px){.card{padding:17px}.qr-panel{padding:16px 6px}}@media print{body{background:white}header{background:#191919!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.wrap{max-width:none}main{padding:12px}.card{border:0;box-shadow:none}.actions,#share-message{display:none!important}.qr-panel{break-inside:avoid}.notice{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><h1>WHEELING MINERS</h1><p>Season Ticket Pickup Receipt</p></div></header>
+<main class="wrap"><div class="card">
+<p class="notice"><strong>Pickup receipt — not an admission ticket.</strong> Bring this QR code and your purchase confirmation to authorized Wheeling Miners staff to collect your physical season tickets. Staff will verify the paid order and your identity.</p>
+<p id="status" class="status" role="status">Checking receipt…</p>
+<section id="receipt" class="hidden">
+ <div class="qr-panel"><h3>Your pickup QR code</h3><p class="muted">Show this code to ticket pickup staff.</p><div id="qr" aria-label="Scannable QR code for ticket pickup"></div><div class="actions"><button id="print" type="button">Print receipt</button><button id="share" class="secondary" type="button">Share receipt</button></div><p id="share-message" aria-live="polite"></p></div>
+ <h2>Assigned season-ticket seats</h2><table><thead><tr><th>Section</th><th>Row</th><th>Seat</th></tr></thead><tbody id="seats"></tbody></table>
+ <p><span id="issuance" class="badge"></span></p>
+ <p class="muted">One QR receipt covers every assigned seat listed above. The QR code alone does not establish ownership and cannot be used for arena entry.</p>
+</section>
+<p class="foot">Keep this receipt private. Anyone with its link can display the QR code. If your receipt is lost or shared accidentally, contact the ticket office to have it revoked and replaced.</p>
+</div></main>
+<script src="/qr-local.js"></script>
+<script>
+'use strict';
+const $=id=>document.getElementById(id),CODE=/^[a-f0-9]{64}$/;
+const code=new URLSearchParams(location.hash.slice(1)).get('code');
+function qrSvg(value){
+ if(typeof WMQRCode!=='function'||typeof WMQRErrorCorrectLevel==='undefined')throw Error('QR renderer unavailable');
+ const qr=new WMQRCode(-1,WMQRErrorCorrectLevel.M);qr.addData(value);qr.make();
+ const modules=qr.getModuleCount(),scale=5,quiet=4,size=(modules+quiet*2)*scale;
+ const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
+ svg.setAttribute('viewBox',`0 0 ${size} ${size}`);svg.setAttribute('width',size);svg.setAttribute('height',size);svg.setAttribute('role','img');svg.setAttribute('aria-label','Ticket pickup QR code');
+ const bg=document.createElementNS(ns,'rect');bg.setAttribute('width',size);bg.setAttribute('height',size);bg.setAttribute('fill','#fff');svg.append(bg);
+ for(let y=0;y<modules;y++)for(let x=0;x<modules;x++)if(qr.isDark(y,x)){const rect=document.createElementNS(ns,'rect');rect.setAttribute('x',(x+quiet)*scale);rect.setAttribute('y',(y+quiet)*scale);rect.setAttribute('width',scale);rect.setAttribute('height',scale);rect.setAttribute('fill','#000');svg.append(rect)}
+ return svg;
+}
+function fail(message){$('status').textContent=message;$('status').className='status error';$('receipt').classList.add('hidden')}
+async function load(){
+ if(!code||!CODE.test(code)){fail('Missing or invalid receipt code. Use the private receipt link provided by the ticket office.');return}
+ try{
+  const response=await fetch('/api/seats/receipt/lookup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),cache:'no-store',credentials:'omit'});
+  const data=await response.json();if(!response.ok||data.ok!==true||!Array.isArray(data.season_tickets))throw Error('Receipt unavailable or revoked');
+  for(const seat of data.season_tickets){const row=document.createElement('tr');for(const key of ['section','row','seat']){const cell=document.createElement('td');cell.textContent=String(seat[key]??'');row.append(cell)}$('seats').append(row)}
+  $('qr').replaceChildren(qrSvg(location.origin+'/ticket-receipt.html#code='+code));
+  const issued=data.issuance_status==='ISSUED';$('issuance').textContent=issued?'Physical tickets already issued':'Physical tickets not yet issued';$('issuance').classList.toggle('issued',issued);
+  $('receipt').classList.remove('hidden');$('status').textContent='Receipt verified · '+data.ticket_count+' assigned seat(s)';$('status').className='status success';
+ }catch{fail('Unable to verify this receipt. It may have been revoked. Contact the ticket office for assistance.')}
+}
+$('print').addEventListener('click',()=>window.print());
+$('share').addEventListener('click',async()=>{const url=location.origin+'/ticket-receipt.html#code='+code;try{if(navigator.share){await navigator.share({title:'Wheeling Miners season ticket pickup receipt',url});$('share-message').textContent='';return}if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(url);$('share-message').textContent='Private receipt link copied. Share only with the purchaser.';return}$('share-message').textContent='Use your browser Share option to send this receipt privately.'}catch(e){if(e.name!=='AbortError')$('share-message').textContent='Unable to share. Use your browser Share option.'}});
+load();
+</script>
+</body></html>
