@@ -1,0 +1,24 @@
+name: Wheeling TEST launch blocker report (read-only)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/check-ticket-launch-blockers.mjs'
+      - 'scripts/wm-test-checkout-preflight.mjs'
+      - 'tests/wm-test-checkout-preflight.test.mjs'
+      - '.github/workflows/wheeling-test-launch-blockers.yml'
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify checkout preflight rules
+        run: node --test tests/wm-test-checkout-preflight.test.mjs
+      - name: Generate launch blocker report from deployed TEST
+        run: node tools/check-ticket-launch-blockers.mjs
