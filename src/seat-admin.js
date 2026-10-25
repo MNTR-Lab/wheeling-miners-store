@@ -11,6 +11,7 @@ import {handleShopifyAdminConnection} from './seat-shopify-admin-auth.js';
 import {handleShopifyStorefrontConnection} from './seat-shopify-storefront-auth.js';
 import {handleSeatOrderRecovery} from './seat-order-recovery.js';
 import {handleTestRelease} from './seat-test-release.js';
+import {handleTestReservation} from './seat-test-reservation.js';
 const HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
 const reply=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const SKU=/^WM-ST-\d{3}-[A-Z][A-Z0-9]{0,3}-\d{2,3}$/;
@@ -29,6 +30,7 @@ export async function handleSeatAdmin(request,env){
  if(!env.SEAT_DB)return reply({error:'Seat database unavailable'},503);
  if(!authorized(request,env))return reply({error:'Unauthorized'},401);
  if(path==='/api/seats/admin/test-release')return handleTestRelease(request,env);
+ if(path==='/api/seats/admin/test-reservation')return handleTestReservation(request,env);
  if(path==='/api/seats/admin/order-recovery')return handleSeatOrderRecovery(request,env);
  if(path==='/api/seats/admin/shopify-connection')return handleShopifyAdminConnection(request,env);
  if(path==='/api/seats/admin/storefront-connection')return handleShopifyStorefrontConnection(request,env);
