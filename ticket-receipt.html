@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer">
-<title>Wheeling Miners | Season Ticket Pickup Receipt</title>
+<title>Wheeling Miners | Ticket Release Party · Season Ticket Receipt</title>
 <style>
 :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:#1c1c1c;background:#f4f4f4;--gold:#d5a52c;--black:#191919}*{box-sizing:border-box}body{margin:0}header{background:var(--black);color:white;padding:26px 16px;border-bottom:5px solid var(--gold)}.wrap{max-width:760px;margin:auto}header h1{margin:0;font-size:clamp(23px,5vw,30px);letter-spacing:.04em}header p{margin:7px 0 0;color:#e8e8e8}main{padding:24px 16px 44px}.card{background:#fff;border:1px solid #dedede;border-radius:14px;padding:24px;box-shadow:0 6px 22px #0000000a}h2{font-size:21px;margin:0 0 12px}.notice{padding:15px;border-left:5px solid var(--gold);background:#fff5d9;line-height:1.5}.muted{color:#515151;line-height:1.55}.status{font-weight:700;margin:20px 0}.error{color:#a41f32}.success{color:#196036}.qr-panel{text-align:center;border:1px solid #e4e4e4;border-radius:12px;background:#fafafa;padding:22px 12px;margin:20px 0}.qr-panel svg{max-width:100%;height:auto;display:block;margin:12px auto;background:#fff}.qr-panel h3{margin:0}.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:18px 0}button{background:var(--black);color:#fff;border:0;border-radius:8px;padding:12px 18px;font-size:15px;font-weight:700;cursor:pointer}button.secondary{background:var(--gold);color:#191919}button:disabled{opacity:.5;cursor:not-allowed}table{border-collapse:collapse;width:100%;margin:12px 0 18px}th,td{text-align:left;border-bottom:1px solid #e9e9e9;padding:12px}th{font-size:12px;text-transform:uppercase;color:#555}.badge{display:inline-block;padding:8px 12px;border-radius:999px;background:#ececec;font-weight:700}.badge.issued{background:#e3f3e5;color:#18582d}.hidden{display:none!important}#share-message{font-size:13px;overflow-wrap:anywhere}.foot{font-size:13px;color:#555;border-top:1px solid #eee;padding-top:16px;margin-top:22px}@media(max-width:520px){.card{padding:17px}.qr-panel{padding:16px 6px}}@media print{body{background:white}header{background:#191919!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.wrap{max-width:none}main{padding:12px}.card{border:0;box-shadow:none}.actions,#share-message{display:none!important}.qr-panel{break-inside:avoid}.notice{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style>
 </head>
 <body>
-<header><div class="wrap"><h1>WHEELING MINERS</h1><p>Season Ticket Pickup Receipt</p></div></header>
+<header><div class="wrap"><h1>WHEELING MINERS</h1><p>Ticket Release Party · Season Ticket Receipt</p></div></header>
 <main class="wrap"><div class="card">
-<p class="notice"><strong>Pickup receipt — not an admission ticket.</strong> Bring this QR code and your purchase confirmation to authorized Wheeling Miners staff to collect your physical season tickets. Staff will verify the paid order and your identity.</p>
+<p class="notice"><strong>Ticket Release Party pickup receipt — not an admission ticket.</strong> Bring this QR code, your purchase confirmation, and identification to the Wheeling Miners Ticket Release Party. Staff will scan your QR code, verify your paid order and assigned seats, and give you your physical season tickets. The team will announce the party date, time, and location separately.</p>
 <p id="status" class="status" role="status">Checking receipt…</p>
 <section id="receipt" class="hidden">
- <div class="qr-panel"><h3>Your pickup QR code</h3><p class="muted">Show this code to ticket pickup staff.</p><div id="qr" aria-label="Scannable QR code for ticket pickup"></div><div class="actions"><button id="print" type="button">Print receipt</button><button id="share" class="secondary" type="button">Share receipt</button></div><p id="share-message" aria-live="polite"></p></div>
+ <div class="qr-panel"><h3>Your Ticket Release Party QR code</h3><p class="muted">Save this QR code on your phone or print it. Show it to staff at the Ticket Release Party.</p><div id="qr" aria-label="Scannable QR code for the Ticket Release Party"></div><div class="actions"><button id="print" type="button">Print receipt</button><button id="share" class="secondary" type="button">Share receipt</button></div><p id="share-message" aria-live="polite"></p></div>
  <h2>Assigned season-ticket seats</h2><table><thead><tr><th>Section</th><th>Row</th><th>Seat</th></tr></thead><tbody id="seats"></tbody></table>
  <p><span id="issuance" class="badge"></span></p>
  <p class="muted">One QR receipt covers every assigned seat listed above. The QR code alone does not establish ownership and cannot be used for arena entry.</p>
@@ -31,7 +31,7 @@ function qrSvg(value){
  const qr=new WMQRCode(-1,WMQRErrorCorrectLevel.M);qr.addData(value);qr.make();
  const modules=qr.getModuleCount(),scale=5,quiet=4,size=(modules+quiet*2)*scale;
  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
- svg.setAttribute('viewBox',`0 0 ${size} ${size}`);svg.setAttribute('width',size);svg.setAttribute('height',size);svg.setAttribute('role','img');svg.setAttribute('aria-label','Ticket pickup QR code');
+ svg.setAttribute('viewBox',`0 0 ${size} ${size}`);svg.setAttribute('width',size);svg.setAttribute('height',size);svg.setAttribute('role','img');svg.setAttribute('aria-label','Ticket Release Party pickup QR code');
  const bg=document.createElementNS(ns,'rect');bg.setAttribute('width',size);bg.setAttribute('height',size);bg.setAttribute('fill','#fff');svg.append(bg);
  for(let y=0;y<modules;y++)for(let x=0;x<modules;x++)if(qr.isDark(y,x)){const rect=document.createElementNS(ns,'rect');rect.setAttribute('x',(x+quiet)*scale);rect.setAttribute('y',(y+quiet)*scale);rect.setAttribute('width',scale);rect.setAttribute('height',scale);rect.setAttribute('fill','#000');svg.append(rect)}
  return svg;
