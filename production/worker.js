@@ -2,6 +2,7 @@
  * Public requests never receive controlled-test authorization.
  */
 import baseWorker from '../src/worker.js';
+import {handleAdminControlledCart} from './seat-admin-controlled-cart.js';
 import {handleShopifyPaidWebhook} from '../src/seat-shopify-webhook.js';
 import {validShopifySignature} from '../src/seat-shopify-webhook-signature.js';
 import {parsePaidSeatOrder} from '../src/seat-paid-order.js';
@@ -94,7 +95,7 @@ export default {async fetch(request,env,ctx){
   let raw,body;try{raw=await bytes(request,1024);body=decode(raw)}catch{return reply({error:'INVALID_BODY'},400)}
   if(!body||Object.keys(body).join(',')!=='reservationId'||body.reservationId!==config.rid)return reply({error:'WRONG_CONTROLLED_RESERVATION'},422);
   const url=new URL(request.url);url.pathname='/api/seats/admin/controlled-cart';
-  return baseWorker.fetch(new Request(url,{method:'POST',headers:request.headers,body:raw}),{...env,SEAT_CONTROLLED_CART_ENABLED:'true'},ctx);
+  return handleAdminControlledCart(new Request(url,{method:'POST',headers:request.headers,body:raw}),{...env,SEAT_CONTROLLED_CART_ENABLED:'true'});
  }
  return baseWorker.fetch(request,env,ctx);
 }};
