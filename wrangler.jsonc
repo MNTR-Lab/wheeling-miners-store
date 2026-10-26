@@ -30,5 +30,10 @@
       "invocation_logs": false
     },
     "redact_query_string": true
+  },
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
   }
 }

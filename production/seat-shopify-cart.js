@@ -35,6 +35,10 @@ export async function createControlledSeatCart({reservation,linkedSeats,seatRows
  if(typeof shop!=='string'||!HOST.test(shop)||typeof token!=='string'||token.length<10)fail('SHOPIFY_STOREFRONT_NOT_CONFIGURED');
  const handoff=verifyCheckoutHandoff(reservation,linkedSeats,seatRows,{now});
  const input=buildSeatCartInput(handoff);
+ if(env.WM_ENVIRONMENT!=='PRODUCTION'||shop!=='186815-4c.myshopify.com')fail('PRODUCTION_STORE_REQUIRED');
+ const receipt=new URL('https://wheeling-miners-store.bikard.workers.dev/ticket-receipt.html');
+ receipt.hash=new URLSearchParams({reservation:reservation.id,key:reservation.checkout_nonce}).toString();
+ input.attributes.push({key:'wm_pickup_receipt_url',value:receipt.toString()});
  const response=await fetchImpl(`https://${shop}/api/2026-10/graphql.json`,{method:'POST',headers:{'content-type':'application/json','Shopify-Storefront-Private-Token':token},body:JSON.stringify({query:MUTATION,variables:{input}})});
  if(!response?.ok)fail('SHOPIFY_CART_HTTP_ERROR');
  const result=await response.json();

@@ -2,6 +2,9 @@
  * Public requests never receive controlled-test authorization.
  */
 import baseWorker from '../src/worker.js';
+import {releaseExpiredPublicHolds} from './seat-expired-holds.js';
+import {handlePublicCheckout as handleProductionPublicCheckout} from './seat-public-checkout.js';
+import {handleReceiptClaim} from './seat-receipt-claim.js';
 import {handleAdminControlledCart} from './seat-admin-controlled-cart.js';
 import {handleShopifyPaidWebhook} from '../src/seat-shopify-webhook.js';
 import {validShopifySignature} from '../src/seat-shopify-webhook-signature.js';
@@ -71,7 +74,7 @@ export async function handleControlledReservation(request,env,{now=Date.now(),ra
   return reply({ok:true,sku:row.sku,reservationId:config.rid,expiresAt:new Date(expiresAt).toISOString(),priceCents:config.price,publicSalesEnabled:false},201);
  }catch{return reply({error:'RESERVATION_CONFLICT'},409)}
 }
-export default {async fetch(request,env,ctx){
+export default {async scheduled(event,env,ctx){ctx.waitUntil(releaseExpiredPublicHolds(env));},async fetch(request,env,ctx){
  const path=new URL(request.url).pathname;
  if(env?.SEAT_PRODUCTION_CONTROLLED_TEST_ENABLED==='true'&&['/api/seats/hold','/api/seats/checkout'].includes(path))return reply({error:'PUBLIC_SALES_NOT_ENABLED'},423);
  if(path==='/api/seats/admin/production-test-status'){
@@ -86,6 +89,8 @@ export default {async fetch(request,env,ctx){
   if(/^wm_control_[a-f0-9]{32}$/.test(env.SEAT_PRODUCTION_CONTROLLED_RESERVATION_ID||''))reservation=await env.SEAT_DB.prepare('SELECT id,status,expires_at,shopify_order_id FROM reservations WHERE id=?').bind(env.SEAT_PRODUCTION_CONTROLLED_RESERVATION_ID).first();
   return reply({ok:true,seat,reservation,controlledWindowOpen:!!controlledTestConfig(env),publicSalesEnabled:false,readOnly:true});
  }
+ if(path==='/api/seats/receipt/claim'){try{return await handleReceiptClaim(request,env)}catch{return reply({error:'RECEIPT_UNAVAILABLE'},503)}}
+ if(['/api/seats/hold','/api/seats/checkout'].includes(path))return handleProductionPublicCheckout(request,env);
  if(path==='/api/seats/webhooks/shopify')return handleControlledProductionWebhook(request,env);
  if(path==='/api/seats/admin/production-test-reservation')return handleControlledReservation(request,env);
  if(path==='/api/seats/admin/production-test-cart'){

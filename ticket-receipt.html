@@ -25,7 +25,7 @@
 <script>
 'use strict';
 const $=id=>document.getElementById(id),CODE=/^[a-f0-9]{64}$/;
-const code=new URLSearchParams(location.hash.slice(1)).get('code');
+const params=new URLSearchParams(location.hash.slice(1));let code=params.get('code');let confirmationRetries=0;
 function qrSvg(value){
  if(typeof WMQRCode!=='function'||typeof WMQRErrorCorrectLevel==='undefined')throw Error('QR renderer unavailable');
  const qr=new WMQRCode(-1,WMQRErrorCorrectLevel.M);qr.addData(value);qr.make();
@@ -38,7 +38,19 @@ function qrSvg(value){
 }
 function fail(message){$('status').textContent=message;$('status').className='status error';$('receipt').classList.add('hidden')}
 async function load(){
- if(!code||!CODE.test(code)){fail('Missing or invalid receipt code. Use the private receipt link provided by the ticket office.');return}
+ if(!code&&params.has('reservation')&&params.has('key')){
+  try{
+   const response=await fetch('/api/seats/receipt/claim',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reservation:params.get('reservation'),key:params.get('key')}),cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer',redirect:'error'});
+   const claim=await response.json();
+   if(response.status===409&&claim.error==='PAYMENT_CONFIRMATION_PENDING'){
+    $('status').textContent='Your payment confirmation is still being processed. This page checks again automatically. Do not pay again.';
+    if(confirmationRetries++<12)setTimeout(load,10000);else fail('Confirmation is taking longer than expected. Keep your purchase confirmation and contact the ticket office. Do not pay again.');return;
+   }
+   if(!response.ok||!CODE.test(claim.code||''))throw Error('Claim unavailable');
+   code=claim.code;history.replaceState(null,'',location.pathname+'#code='+code);
+  }catch{fail('Unable to open your pickup receipt. Keep your purchase confirmation and contact the ticket office.');return}
+ }
+ if(!code||!CODE.test(code)){fail('Missing or invalid receipt code. Use your private receipt link from the order confirmation or ticket office.');return}
  try{
   const response=await fetch('/api/seats/receipt/lookup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),cache:'no-store',credentials:'omit'});
   const data=await response.json();if(!response.ok||data.ok!==true||!Array.isArray(data.season_tickets))throw Error('Receipt unavailable or revoked');

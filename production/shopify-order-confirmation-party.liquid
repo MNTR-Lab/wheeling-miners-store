@@ -1,0 +1,11 @@
+{% assign wm_party_receipt_url = attributes.wm_pickup_receipt_url %}
+{% assign wm_party_receipt_prefix = wm_party_receipt_url | slice: 0, 84 %}
+{% if wm_party_receipt_prefix == 'https://wheeling-miners-store.bikard.workers.dev/ticket-receipt.html#reservation=wm_' %}
+<table role="presentation" style="width:100%;margin:24px 0;border:2px solid #C99A2E;border-radius:8px;"><tr><td style="padding:20px;font-family:Arial,sans-serif;color:#2C2C2C;">
+<h2 style="margin-top:0;">Wheeling Miners Ticket Release Party</h2>
+<p>Your season-ticket pickup receipt is available through the private link below after payment and seat confirmation.</p>
+<p><a href="{{ wm_party_receipt_url | escape }}" style="display:inline-block;padding:14px 20px;background:#C99A2E;color:#111;text-decoration:none;font-weight:bold;">Open your pickup QR receipt</a></p>
+<p>Save the QR code on your phone or print it. Bring it, your purchase confirmation, and identification to the Ticket Release Party to collect your physical season tickets.</p>
+<p>The team will announce the party date, time, and location separately. This QR receipt is not valid for arena admission. Keep your link private.</p>
+</td></tr></table>
+{% endif %}

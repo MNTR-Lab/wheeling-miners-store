@@ -361,7 +361,7 @@ const SEASON_TICKET_LEVELS={
 // {'100-01':{section:'108',inventory:25,productGid:'gid://shopify/Product/...'}}
 // Do not activate checkout solely by populating this object; inventory must also be confirmed in Shopify.
 const VERIFIED_SECTION_MAP=Object.fromEntries(Array.from(document.querySelectorAll('[data-seat-section]')).map(el=>[el.dataset.seatSection,{section:el.dataset.seatSection,level:el.dataset.seatLevel,sku:`WM-ST-SEC-${el.dataset.seatSection}`,inventory:null,status:'DRAFT'}]));
-const SEASON_TICKET_SALES_ENABLED=false;
+
 let selectedSeatLevel='all';let selectedSeatArea=null;
 function renderSeatTickets(){
  const el=document.getElementById('seat-ticket-products');if(!el)return;
@@ -370,12 +370,12 @@ function renderSeatTickets(){
  if(!lvl){
   heading.textContent='CHOOSE YOUR SECTION';
   note.textContent='Click any numbered section on the seating chart to see its full-season ticket price.';
-  el.innerHTML='<div class="seat-v19-price-grid">'+Object.entries(SEASON_TICKET_LEVELS).map(([k,v])=>`<button type="button" data-v19-pick-level="${k}"><strong>${k} LEVEL</strong><span>${v.label}</span><b>$${v.price.toFixed(2)}</b></button>`).join('')+'</div><div class="seat-v19-warning">Section products are prepared in Shopify as drafts. Inventory has not been released.</div>';
+  el.innerHTML='<div class="seat-v19-price-grid">'+Object.entries(SEASON_TICKET_LEVELS).map(([k,v])=>`<button type="button" data-v19-pick-level="${k}"><strong>${k} LEVEL</strong><span>${v.label}</span><b>$${v.price.toFixed(2)}</b></button>`).join('')+'</div><div class="seat-v19-warning">Choose a section, then check live seat availability. Your exact row and seat are selected before checkout.</div><a class="seat-v19-buy" style="display:block;text-align:center" href="/season-tickets.html">VIEW LIVE SEAT AVAILABILITY</a>';
  }else{
   const mapped=selectedSeatArea&&VERIFIED_SECTION_MAP[selectedSeatArea];
   heading.textContent=mapped?`SECTION ${mapped.section}`:`${selectedSeatLevel} LEVEL · ${lvl.label}`;
   note.textContent=mapped?`Section ${mapped.section} · ${lvl.label} · Full-season tickets`:`Select a numbered ${selectedSeatLevel}-level section on the map.`;
-  el.innerHTML=`<div class="seat-v19-price-label">FULL SEASON · PER TICKET</div><div class="seat-v19-price">$${lvl.price.toFixed(2)}</div><div class="seat-v19-summary"><div><span>Seating level</span><strong>${selectedSeatLevel} · ${lvl.label}</strong></div><div><span>Section</span><strong>${mapped?escapeHtml(mapped.section):'Select a section'}</strong></div><div><span>Seat assignment</span><strong>Assigned after purchase</strong></div><div><span>Available tickets</span><strong>Not yet released</strong></div></div><div class="seat-v19-quantity"><label for="season-ticket-quantity">Number of season tickets</label><select id="season-ticket-quantity" disabled><option>1</option><option>2</option><option>3</option><option>4</option></select></div><button type="button" class="seat-v19-buy" disabled>COMING SOON · SALES NOT OPEN</button><div class="seat-v19-warning">${mapped?`Section ${escapeHtml(mapped.section)} is linked to Shopify draft SKU ${escapeHtml(mapped.sku)}. `:''}No season-ticket inventory has been approved or released for checkout.</div>`;
+  el.innerHTML=`<div class="seat-v19-price-label">FULL SEASON · PER TICKET</div><div class="seat-v19-price">$${lvl.price.toFixed(2)}</div><div class="seat-v19-summary"><div><span>Seating level</span><strong>${selectedSeatLevel} · ${lvl.label}</strong></div><div><span>Section</span><strong>${mapped?escapeHtml(mapped.section):'Select a section'}</strong></div><div><span>Seat assignment</span><strong>Choose your row and seat</strong></div><div><span>Available tickets</span><strong>Check live availability</strong></div></div><div class="seat-v19-quantity"><label for="season-ticket-quantity">Number of season tickets</label><select id="season-ticket-quantity" disabled><option>1</option><option>2</option><option>3</option><option>4</option></select></div><a class="seat-v19-buy" style="display:block;text-align:center" href="/season-tickets.html${mapped?`?section=${mapped.section}`:''}">VIEW LIVE SEAT AVAILABILITY</a><div class="seat-v19-warning">Seat availability is verified on the next page. Seats are confirmed after successful payment. Bring your pickup QR receipt to the Ticket Release Party.</div>`;
  }
  el.querySelectorAll('[data-v19-pick-level]').forEach(b=>b.addEventListener('click',()=>selectSeatLevel(b.dataset.v19PickLevel)));
 }
